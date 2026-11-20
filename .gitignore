@@ -1,0 +1,27 @@
+# Local secrets and environment files
+.env
+.env.*
+!.env.example
+**/secrets.json
+**/secrets.*.json
+
+# Project documentation and academic deliverables are stored in Drive
+/documentacion/
+/postman/
+/.postman/
+/scripts/
+/web/postman/
+
+# .NET build output and IDE state
+**/bin/
+**/obj/
+**/.vs/
+**/.vscode/
+*.user
+*.suo
+
+# Operating system and office editor temporary files
+.DS_Store
+Thumbs.db
+documentacion/.~lock.*#
+

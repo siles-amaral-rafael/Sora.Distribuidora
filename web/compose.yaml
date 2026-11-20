@@ -1,0 +1,42 @@
+services:
+  sora-postgres:
+    image: docker.io/library/postgres:17-alpine
+    env_file:
+      - .env
+    volumes:
+      - sora-postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-sora} -d ${POSTGRES_DB:-sora}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    ports:
+      - "127.0.0.1:5433:5432"
+
+  sora-api:
+    build:
+      context: .
+      dockerfile: Containerfile.api
+    env_file:
+      - .env
+    environment:
+      ASPNETCORE_ENVIRONMENT: Development
+      ASPNETCORE_HTTP_PORTS: "8080"
+      Jwt__Issuer: Sora.Api
+      Jwt__Audience: Sora.Blazor
+      Jwt__ExpiresMinutes: "30"
+      Cors__Origins__0: http://localhost:5173
+    ports:
+      - "127.0.0.1:5151:8080"
+
+  sora-blazor:
+    build:
+      context: .
+      dockerfile: Containerfile.blazor
+    depends_on:
+      - sora-api
+    ports:
+      - "127.0.0.1:5173:8080"
+
+volumes:
+  sora-postgres-data:
