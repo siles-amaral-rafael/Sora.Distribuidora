@@ -19,7 +19,9 @@ public sealed class AuthController(IAuthService authService, IWebHostEnvironment
         id = User.FindFirstValue(ClaimTypes.NameIdentifier),
         email = User.FindFirstValue(ClaimTypes.Email) ?? User.FindFirstValue("email"),
         fullName = User.Identity?.Name,
-        role = User.FindFirstValue(ClaimTypes.Role)
+        role = User.FindFirstValue("role_name"),
+        roles = User.FindAll(ClaimTypes.Role).Select(x => x.Value),
+        permissions = User.FindAll("permission").Select(x => x.Value)
     });
 
     [AllowAnonymous]

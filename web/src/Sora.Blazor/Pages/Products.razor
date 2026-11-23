@@ -1,0 +1,66 @@
+@page "/products"
+@inject ApiClient Api
+@inject ApiSession Session
+@inject NavigationManager Navigation
+
+<PageTitle>Productos | Sora</PageTitle>
+<header class="page-heading"><div><span class="eyebrow">CATÁLOGO</span><h1>Productos</h1><p>Precios de venta por unidad y equivalencias de paquetes o cajas.</p></div></header>
+<div class="split-layout">
+    @if(Session.HasPermission("products.write")){<section class="panel form-panel"><h2>@(EditingId is null ? "Nuevo producto" : "Editar producto")</h2>
+        <EditForm Model="Form" OnValidSubmit="Save"><DataAnnotationsValidator />
+            <div class="form-grid"><div><label>Código interno</label><InputText class="form-control" @bind-Value="Form.InternalCode" /></div><div><label>Código de barras</label><InputText class="form-control" @bind-Value="Form.Barcode" /></div></div>
+            <label>Nombre</label><InputText class="form-control" @bind-Value="Form.Name" />
+            <div class="form-grid"><div><label>Marca</label><InputText class="form-control" @bind-Value="Form.Brand" /></div><div><label>Categoría</label><InputText class="form-control" @bind-Value="Form.Category" /></div></div>
+            <div class="form-grid three"><div><label>Contenido neto</label><InputNumber class="form-control" @bind-Value="Form.NetContent" /></div><div><label>Unidad</label><InputText class="form-control" @bind-Value="Form.ContentUnit" /></div><div><label>Precio por unidad (Bs)</label><InputNumber class="form-control" @bind-Value="Form.UnitSalePrice" /></div></div>
+            <label>Unidad base</label><InputText class="form-control" @bind-Value="Form.BaseUnit" />
+            <div class="actions"><button class="button primary">Guardar producto</button><button type="button" class="button secondary" @onclick="Reset">Limpiar</button></div>
+        </EditForm>
+        @if (Error is not null) { <div class="alert error">@Error</div> } @if (Notice is not null) { <div class="alert success">@Notice</div> }
+    </section>}
+        <section class="panel"><div class="panel-title"><h2>Catálogo</h2><button class="button secondary" @onclick="Load">Actualizar</button></div>
+        @foreach (var p in ProductRows) { <article class="product-row"><div class="product-row-main"><span class="code">@p.InternalCode @if(!p.IsActive){<span class="status-pill">Inactivo</span>}</span><strong>@p.Name</strong><small>@(p.Brand ?? "Sin marca") · @(p.Category ?? "Sin categoría")</small><span>Bs @p.UnitSalePrice.ToString("0.00") / @p.BaseUnit</span>
+            @if (p.Presentations.Count > 0) { <div class="chips">@foreach(var pr in p.Presentations.Where(x=>x.IsActive)) { <span>@pr.Name · @pr.UnitsPerPresentation u.</span> }</div> }
+            @if (Session.HasPermission("products.write")){@if (PresentingProduct == p.Id) { <div class="presentation-editor"><input class="form-control" placeholder="Nombre (caja, paquete)" @bind="PresentationName"/><input class="form-control" type="number" min="1" placeholder="Unidades" @bind="PresentationUnits"/><button class="button primary" @onclick="() => AddPresentation(p.Id)">Añadir presentación</button></div> }
+            <div class="row-actions"><button class="link-button" @onclick="() => Edit(p)">Editar</button><button class="link-button" @onclick="() => TogglePresentation(p.Id)">+ Presentación</button>@if(p.IsActive){<button class="link-button danger-text" @onclick="() => Deactivate(p)">Desactivar</button>}else{<button class="link-button" @onclick="() => Activate(p)">Reactivar</button>}</div>}
+            @if (Session.HasPermission("discounts.manage"))
+            {
+                <div class="row-actions"><button class="link-button" @onclick="() => BeginDiscountEdit(p)">Configurar beneficios</button></div>
+                @if (DiscountRulesProductId == p.Id)
+                {
+                    <div class="presentation-editor discount-editor">
+                        <strong>Tramos de beneficio · @p.Name</strong>
+                        <p class="muted">El porcentaje solicitado se limita automáticamente para conservar al menos el 80% del margen bruto de los lotes utilizados.</p>
+                        @foreach (var (rule, index) in DiscountRuleDrafts.Select((x,i)=>(x,i)))
+                        {
+                            <div class="form-grid"><div><label>Desde unidades</label><InputNumber class="form-control" min="1" @bind-Value="rule.MinimumQuantityUnits"/></div><div><label>Beneficio solicitado (%)</label><InputNumber class="form-control" min="0.01" max="100" step="0.01" @bind-Value="rule.DiscountPercent"/></div><button type="button" class="link-button danger-text" @onclick="() => DiscountRuleDrafts.RemoveAt(index)">Quitar</button></div>
+                        }
+                        <div class="form-grid"><div><label>Nuevo tramo: desde unidades</label><InputNumber class="form-control" min="1" @bind-Value="NewRuleMinimum"/></div><div><label>Beneficio solicitado (%)</label><InputNumber class="form-control" min="0.01" max="100" step="0.01" @bind-Value="NewRulePercent"/></div><button type="button" class="button secondary" @onclick="AddDiscountRule">Añadir tramo</button></div>
+                        <button class="button primary" @onclick="SaveDiscountRules">Guardar tramos</button>
+                    </div>
+                }
+            }
+        </div></article> }
+        @if (ProductRows.Count == 0) { <p class="empty">Todavía no hay productos registrados.</p> }
+    </section>
+</div>
+
+@code {
+    private List<ProductResponse> ProductRows=[]; private SaveProductRequest Form {get;set;}=NewForm(); private Guid? EditingId, PresentingProduct;
+    private string PresentationName="Caja"; private int PresentationUnits=1; private string? Error, Notice;
+    private Guid? DiscountRulesProductId; private List<DiscountRuleDraft> DiscountRuleDrafts=[];
+    private int NewRuleMinimum=12; private decimal NewRulePercent=1;
+    protected override async Task OnInitializedAsync(){if(!Session.IsSignedIn){Navigation.NavigateTo("/login");return;}if(!Session.CanAccessPage("products")){Navigation.NavigateTo("/forbidden");return;} await Load();}
+    private async Task Load(){var r=await Api.SendAsync<List<ProductResponse>>(HttpMethod.Get,"api/products");if(r.IsSuccess)ProductRows=r.Value??[];else Error=r.Error;}
+    private async Task Save(){var r=await Api.SendAsync<ProductResponse>(EditingId is null?HttpMethod.Post:HttpMethod.Put,EditingId is null?"api/products":$"api/products/{EditingId}",Form);if(!r.IsSuccess){Error=r.Error;return;} Notice="Producto guardado.";Error=null;Reset();await Load();}
+    private void Edit(ProductResponse p){EditingId=p.Id;Form=new(){InternalCode=p.InternalCode,Barcode=p.Barcode,Name=p.Name,Brand=p.Brand,Category=p.Category,NetContent=p.NetContent,ContentUnit=p.ContentUnit,BaseUnit=p.BaseUnit,UnitSalePrice=p.UnitSalePrice};}
+    private async Task Deactivate(ProductResponse p){var r=await Api.SendAsync<object>(HttpMethod.Delete,$"api/products/{p.Id}");if(r.IsSuccess){Notice="Producto desactivado.";await Load();}else Error=r.Error;}
+    private async Task Activate(ProductResponse p){var r=await Api.SendAsync<object>(HttpMethod.Post,$"api/products/{p.Id}/activate");if(r.IsSuccess){Notice="Producto reactivado.";await Load();}else Error=r.Error;}
+    private async Task AddPresentation(Guid id){var r=await Api.SendAsync<ProductPresentationResponse>(HttpMethod.Post,$"api/products/{id}/presentations",new SaveProductPresentationRequest{Name=PresentationName,UnitsPerPresentation=PresentationUnits});if(r.IsSuccess){Notice="Presentación agregada.";PresentingProduct=null;await Load();}else Error=r.Error;}
+    private void TogglePresentation(Guid id)=>PresentingProduct=PresentingProduct==id?null:id;
+    private void BeginDiscountEdit(ProductResponse product){DiscountRulesProductId=product.Id;DiscountRuleDrafts=product.DiscountRules.Select(x=>new DiscountRuleDraft{MinimumQuantityUnits=x.MinimumQuantityUnits,DiscountPercent=x.DiscountPercent}).ToList();}
+    private void AddDiscountRule(){if(NewRuleMinimum<=0||NewRulePercent<=0||NewRulePercent>100||DiscountRuleDrafts.Any(x=>x.MinimumQuantityUnits==NewRuleMinimum)){Error="Cada tramo debe tener unidades únicas y un porcentaje entre 0 y 100.";return;}DiscountRuleDrafts.Add(new(){MinimumQuantityUnits=NewRuleMinimum,DiscountPercent=NewRulePercent});DiscountRuleDrafts=DiscountRuleDrafts.OrderBy(x=>x.MinimumQuantityUnits).ToList();Error=null;}
+    private async Task SaveDiscountRules(){if(DiscountRulesProductId is not Guid id)return;if(DiscountRuleDrafts.Any(x=>x.MinimumQuantityUnits<=0||x.DiscountPercent<=0||x.DiscountPercent>100)||DiscountRuleDrafts.Select(x=>x.MinimumQuantityUnits).Distinct().Count()!=DiscountRuleDrafts.Count){Error="Revisa unidades mínimas y porcentajes; no se permiten tramos duplicados.";return;}var req=new ReplaceProductDiscountRulesRequest{Rules=DiscountRuleDrafts.Select(x=>new SaveProductDiscountRuleRequest{MinimumQuantityUnits=x.MinimumQuantityUnits,DiscountPercent=x.DiscountPercent}).ToList()};var r=await Api.SendAsync<ProductResponse>(HttpMethod.Put,$"api/products/{id}/discount-rules",req);if(!r.IsSuccess){Error=r.Error;Notice=null;return;}Notice="Tramos de beneficio guardados.";Error=null;DiscountRulesProductId=null;await Load();}
+    private sealed class DiscountRuleDraft{public int MinimumQuantityUnits{get;set;}=1;public decimal DiscountPercent{get;set;}=1;}
+    private void Reset(){EditingId=null;Form=NewForm();}
+    private static SaveProductRequest NewForm()=>new(){BaseUnit="unidad"};
+}

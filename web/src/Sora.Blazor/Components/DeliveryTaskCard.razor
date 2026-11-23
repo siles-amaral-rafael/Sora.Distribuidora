@@ -1,0 +1,20 @@
+@inject ApiClient Api
+<div class="delivery-card"><span class="eyebrow">@Task.DispatchNumber · @Task.VehicleIdentifier</span><h3>@Task.OrderNumber</h3>
+    <p><strong>Recibe:</strong> @Task.CustomerName<br/><strong>Dirección:</strong> @Task.DeliveryAddress<br/><strong>Coordenadas:</strong> @(Task.Latitude?.ToString("F6") ?? "—"), @(Task.Longitude?.ToString("F6") ?? "—")</p>
+    @if(CanRecord){<label>Resultado</label><InputSelect class="form-select" @bind-Value="ResultKind"><option value="DELIVERED">Entregado</option><option value="NOT_FOUND">Cliente no encontrado</option><option value="REJECTED">Rechazado</option><option value="CANCELLED">Cancelado después de salir</option></InputSelect>
+        @if(ResultKind=="DELIVERED"){<label>Nombre de quien recibe</label><InputText class="form-control" @bind-Value="RecipientName"/><label>Relación con el cliente</label><InputText class="form-control" @bind-Value="Relationship"/>}
+        @if(ResultKind is "NOT_FOUND" or "REJECTED" or "CANCELLED"){<label>Motivo / observación</label><InputText class="form-control" @bind-Value="Reason"/>}
+        @if(ResultKind=="CANCELLED"){<label>Tarifa de cancelación (Bs, según distancia)</label><InputNumber class="form-control" min="0" step="0.01" @bind-Value="CancellationFeeAmount"/>}
+        @if(ResultKind is "DELIVERED" or "REJECTED" or "CANCELLED"){<SignaturePad @ref="Signature"/>}
+        <button class="button primary" @onclick="Save">Guardar resultado</button>
+    }
+    @if(Error is not null){<div class="alert error">@Error</div>}
+</div>
+@code {
+    [Parameter, EditorRequired] public AssignedDeliveryResponse Task {get;set;}=null!;
+    [Parameter] public bool CanRecord {get;set;}
+    [Parameter] public EventCallback OnSaved {get;set;}
+    private string ResultKind="DELIVERED",RecipientName="",Relationship="",Reason=""; private decimal CancellationFeeAmount;
+    private SignaturePad? Signature; private string? Error;
+    private async Task Save(){string? signature=null;if(ResultKind is "DELIVERED" or "REJECTED" or "CANCELLED"){if(Signature is null){Error="Espera a que cargue la firma.";return;}signature=await Signature.GetDataUrl();if(string.IsNullOrWhiteSpace(signature)){Error="Dibuja la firma antes de guardar.";return;}}if(ResultKind is "NOT_FOUND" or "REJECTED" or "CANCELLED"&&string.IsNullOrWhiteSpace(Reason)){Error="Registra el motivo del resultado.";return;}var request=new RecordDeliveryResultRequest{Result=ResultKind,RecipientName=RecipientName,RecipientRelationship=Relationship,Reason=Reason,SignatureBase64=signature,SignatureMimeType=signature is null?null:"image/png",CancellationFeeAmount=CancellationFeeAmount};var result=await Api.SendAsync<object>(HttpMethod.Post,$"api/dispatches/orders/{Task.DispatchOrderId}/result",request);if(!result.IsSuccess){Error=result.Error;return;}Error=null;await OnSaved.InvokeAsync();}
+}

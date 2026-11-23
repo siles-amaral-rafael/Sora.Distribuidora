@@ -1,0 +1,8 @@
+@inject IJSRuntime JS
+<div class="signature-wrap"><canvas @ref="Canvas" class="signature-canvas" width="700" height="190"></canvas><div class="signature-actions"><span>Firma aquí con el dedo o el mouse</span><button type="button" class="link-button" @onclick="Clear">Borrar firma</button></div></div>
+@code {
+    private ElementReference Canvas;
+    protected override async Task OnAfterRenderAsync(bool firstRender) { if (firstRender) await JS.InvokeVoidAsync("soraSignature.init", Canvas); }
+    public async Task<string?> GetDataUrl() => await JS.InvokeAsync<string?>("soraSignature.data", Canvas);
+    public async Task Clear() => await JS.InvokeVoidAsync("soraSignature.clear", Canvas);
+}

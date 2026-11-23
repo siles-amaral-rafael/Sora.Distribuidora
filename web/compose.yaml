@@ -13,6 +13,28 @@ services:
     ports:
       - "127.0.0.1:5433:5432"
 
+  sora-backup:
+    image: docker.io/library/postgres:17-alpine
+    user: "0:0"
+    depends_on:
+      - sora-postgres
+    env_file:
+      - .env
+    environment:
+      PGHOST: sora-postgres
+      PGPORT: "5432"
+      PGDATABASE: ${POSTGRES_DB:-sora}
+      PGUSER: ${POSTGRES_USER:-sora}
+      PGCONNECT_TIMEOUT: "10"
+      BACKUP_DIRECTORY: /backups
+      BACKUP_INTERVAL_SECONDS: "86400"
+      BACKUP_RETENTION_COUNT: "7"
+    volumes:
+      - ./scripts:/scripts:ro,Z
+      - ../backups:/backups:Z
+    entrypoint: ["/bin/sh", "/scripts/backup-loop.sh"]
+    restart: unless-stopped
+
   sora-api:
     build:
       context: .
@@ -20,12 +42,14 @@ services:
     env_file:
       - .env
     environment:
-      ASPNETCORE_ENVIRONMENT: Development
+      ASPNETCORE_ENVIRONMENT: ${SORA_ASPNETCORE_ENVIRONMENT:-Development}
       ASPNETCORE_HTTP_PORTS: "8080"
+      Database__MigrateOnStartup: "true"
+      DemoData__Enabled: ${SORA_DEMO_DATA:-false}
       Jwt__Issuer: Sora.Api
       Jwt__Audience: Sora.Blazor
       Jwt__ExpiresMinutes: "30"
-      Cors__Origins__0: http://localhost:5173
+      Cors__Origins__0: ${SORA_WEB_ORIGIN:-http://localhost:5173}
     ports:
       - "127.0.0.1:5151:8080"
 
@@ -36,7 +60,7 @@ services:
     depends_on:
       - sora-api
     ports:
-      - "127.0.0.1:5173:8080"
+      - "${SORA_HOST_BIND_ADDRESS:-127.0.0.1}:5173:8080"
 
 volumes:
   sora-postgres-data:

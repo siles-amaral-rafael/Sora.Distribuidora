@@ -1,0 +1,22 @@
+@page "/suppliers"
+@inject ApiClient Api
+@inject ApiSession Session
+@inject NavigationManager Navigation
+<PageTitle>Proveedores | Sora</PageTitle>
+<header class="page-heading"><div><span class="eyebrow">ABASTECIMIENTO</span><h1>Proveedores</h1><p>Directorio de proveedores de mercadería.</p></div></header>
+<div class="split-layout">
+    @if(Session.HasPermission("suppliers.write"))
+    {
+        <section class="panel form-panel"><h2>@(EditingId is null?"Nuevo proveedor":"Editar proveedor")</h2><EditForm Model="Form" OnValidSubmit="Save"><DataAnnotationsValidator/><label>Nombre</label><InputText class="form-control" @bind-Value="Form.Name"/><label>Teléfono</label><InputText class="form-control" @bind-Value="Form.Phone"/><div class="actions"><button class="button primary">Guardar</button><button type="button" class="button secondary" @onclick="Reset">Limpiar</button></div></EditForm>@if(Error is not null){<div class="alert error">@Error</div>}</section>
+    }
+    <section class="panel"><div class="panel-title"><h2>Directorio</h2><button class="button secondary" @onclick="Load">Actualizar</button></div><div class="table-scroll"><table><thead><tr><th>Proveedor</th><th>Teléfono</th><th>Estado</th><th></th></tr></thead><tbody>@foreach(var s in SupplierRows){<tr><td><strong>@s.Name</strong></td><td>@s.Phone</td><td><span class="status-pill">Activo</span></td><td>@if(Session.HasPermission("suppliers.write")){<button class="link-button" @onclick="()=>Edit(s)">Editar</button><button class="link-button danger-text" @onclick="()=>Deactivate(s)">Desactivar</button>}</td></tr>}</tbody></table></div></section>
+</div>
+@code {
+    private List<SupplierResponse> SupplierRows=[]; private SaveSupplierRequest Form {get;set;}=new(); private Guid? EditingId; private string? Error;
+    protected override async Task OnInitializedAsync(){if(!Session.IsSignedIn){Navigation.NavigateTo("/login");return;}if(!Session.CanAccessPage("suppliers")){Navigation.NavigateTo("/forbidden");return;}await Load();}
+    private async Task Load(){var r=await Api.SendAsync<List<SupplierResponse>>(HttpMethod.Get,"api/suppliers");if(r.IsSuccess)SupplierRows=r.Value??[];else Error=r.Error;}
+    private async Task Save(){var r=await Api.SendAsync<SupplierResponse>(EditingId is null?HttpMethod.Post:HttpMethod.Put,EditingId is null?"api/suppliers":$"api/suppliers/{EditingId}",Form);if(!r.IsSuccess){Error=r.Error;return;}Reset();await Load();}
+    private void Edit(SupplierResponse s){EditingId=s.Id;Form=new(){Name=s.Name,Phone=s.Phone};}
+    private async Task Deactivate(SupplierResponse s){var r=await Api.SendAsync<object>(HttpMethod.Delete,$"api/suppliers/{s.Id}");if(r.IsSuccess)await Load();else Error=r.Error;}
+    private void Reset(){EditingId=null;Form=new();}
+}

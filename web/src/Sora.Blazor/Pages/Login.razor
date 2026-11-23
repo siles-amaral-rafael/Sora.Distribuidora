@@ -1,0 +1,44 @@
+@page "/login"
+@inject ApiClient Api
+@inject ApiSession Session
+@inject NavigationManager Navigation
+
+<PageTitle>Ingreso | Sora</PageTitle>
+<div class="login-wrap">
+    <section class="login-card">
+        <span class="eyebrow">DISTRIBUIDORA SORA</span>
+        <h1>Iniciar sesión</h1>
+        <p>Ingresa con tu cuenta de personal.</p>
+        <EditForm Model="Form" OnValidSubmit="SignIn">
+            <DataAnnotationsValidator />
+            <label>Correo electrónico</label>
+            <InputText class="form-control" @bind-Value="Form.Email" type="email" autocomplete="username" />
+            <label>Contraseña</label>
+            <InputText class="form-control" @bind-Value="Form.Password" type="password" autocomplete="current-password" />
+            <button class="button primary full" disabled="@Busy">@(Busy ? "Ingresando…" : "Ingresar")</button>
+        </EditForm>
+        @if (!string.IsNullOrWhiteSpace(Error)) { <div class="alert error">@Error</div> }
+    </section>
+</div>
+
+@code {
+    private LoginRequest Form { get; set; } = new();
+    private bool Busy;
+    private string? Error;
+
+    protected override void OnInitialized() => Session.SignOut();
+
+    private async Task SignIn()
+    {
+        Busy = true; Error = null;
+        try
+        {
+            var call = await Api.SendAsync<AuthResponse>(HttpMethod.Post, "api/auth/login", Form);
+            if (!call.IsSuccess || call.Value is null) { Error = "Credenciales incorrectas o API no disponible."; return; }
+            Session.SignIn(call.Value.AccessToken, Form.Email);
+            Navigation.NavigateTo("/");
+        }
+        catch (HttpRequestException) { Error = "No se pudo conectar con la API. Verifica que esté encendida."; }
+        finally { Busy = false; }
+    }
+}

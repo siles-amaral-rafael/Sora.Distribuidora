@@ -10,7 +10,7 @@ public sealed class AuthService(
     TimeProvider timeProvider) : IAuthService
 {
     private const int BcryptWorkFactor = 12;
-    private const string DefaultRole = "Vendedor";
+    private const string DefaultRoleCode = "SELLER";
 
     public async Task<AuthResult> RegisterAsync(RegisterRequest request, CancellationToken cancellationToken)
     {
@@ -21,12 +21,9 @@ public sealed class AuthService(
         }
 
         var passwordHash = BCrypt.Net.BCrypt.HashPassword(request.Password, BcryptWorkFactor);
-        var account = new StaffAccount(
-            request.FullName.Trim(),
-            email,
-            passwordHash,
-            DefaultRole,
-            timeProvider.GetUtcNow());
+        var now = timeProvider.GetUtcNow();
+        var account = new StaffAccount(request.FullName.Trim(), email, passwordHash, now);
+        account.AssignRole(DefaultRoleCode, now);
 
         await accounts.AddAsync(account, cancellationToken);
         return AuthResult.Success(tokenIssuer.Issue(account));

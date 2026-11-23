@@ -1,4 +1,5 @@
-﻿<div class="top-row ps-3 navbar navbar-dark">
+﻿@inject ApiSession Session
+<div class="top-row ps-3 navbar navbar-dark">
     <div class="container-fluid">
         <a class="navbar-brand" href="">Sora</a>
         <button title="Navigation menu" class="navbar-toggler" @onclick="ToggleNavMenu">
@@ -6,14 +7,22 @@
         </button>
     </div>
 </div>
-
 <div class="@NavMenuCssClass nav-scrollable" @onclick="ToggleNavMenu">
     <nav class="nav flex-column">
         <div class="nav-item px-3">
             <NavLink class="nav-link" href="" Match="NavLinkMatch.All">
-                <span class="bi bi-house-door-fill-nav-menu" aria-hidden="true"></span> Home
+                <span aria-hidden="true">⌂</span> Inicio
             </NavLink>
         </div>
+        @if(Session.CanAccessPage("customers")){<div class="nav-item px-3"><NavLink class="nav-link" href="customers">Clientes</NavLink></div>}
+        @if(Session.CanAccessPage("products")){<div class="nav-item px-3"><NavLink class="nav-link" href="products">Productos</NavLink></div>}
+        @if(Session.CanAccessPage("suppliers")){<div class="nav-item px-3"><NavLink class="nav-link" href="suppliers">Proveedores</NavLink></div>}
+        @if(Session.CanAccessPage("inventory")){<div class="nav-item px-3"><NavLink class="nav-link" href="inventory">Inventario</NavLink></div>}
+        @if(Session.CanAccessPage("orders")){<div class="nav-item px-3"><NavLink class="nav-link" href="orders">Pedidos</NavLink></div>}
+        @if(Session.CanAccessPage("dispatches")){<div class="nav-item px-3"><NavLink class="nav-link" href="dispatches">Despachos</NavLink></div>}
+        @if(Session.CanAccessPage("notifications")){<div class="nav-item px-3"><NavLink class="nav-link" href="notifications">Avisos simulados</NavLink></div>}
+        @if(Session.CanAccessPage("staff")){<div class="nav-item px-3"><NavLink class="nav-link" href="staff">Personal y roles</NavLink></div>}
+        <div class="nav-item px-3"><NavLink class="nav-link" href="login">Cerrar sesión</NavLink></div>
     </nav>
 </div>
 

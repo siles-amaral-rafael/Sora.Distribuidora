@@ -17,13 +17,22 @@ public sealed class JwtTokenIssuer(IOptions<JwtOptions> options, TimeProvider ti
         var expiresAt = now.AddMinutes(settings.ExpiresMinutes);
         var key = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(settings.SigningKey));
         var credentials = new SigningCredentials(key, SecurityAlgorithms.HmacSha256);
-        var claims = new[]
+        var claims = new List<Claim>
         {
             new Claim(JwtRegisteredClaimNames.Sub, account.Id.ToString()),
             new Claim(JwtRegisteredClaimNames.Email, account.Email),
-            new Claim(ClaimTypes.Name, account.FullName),
-            new Claim(ClaimTypes.Role, account.RoleName)
+            new Claim(ClaimTypes.Name, account.FullName)
         };
+        foreach (var role in account.RoleAssignments)
+        {
+            claims.Add(new Claim(ClaimTypes.Role, role.RoleCode));
+            claims.Add(new Claim("role_name", DisplayName(role.RoleCode)));
+        }
+        foreach (var permission in account.RoleAssignments
+                     .SelectMany(role => role.Role?.Permissions ?? [])
+                     .Select(permission => permission.PermissionCode)
+                     .Distinct(StringComparer.OrdinalIgnoreCase))
+            claims.Add(new Claim("permission", permission));
 
         var token = new JwtSecurityToken(
             issuer: settings.Issuer,
@@ -35,4 +44,15 @@ public sealed class JwtTokenIssuer(IOptions<JwtOptions> options, TimeProvider ti
 
         return new IssuedToken(new JwtSecurityTokenHandler().WriteToken(token), expiresAt);
     }
+
+    private static string DisplayName(string roleCode) => roleCode switch
+    {
+        "ADMIN" => "Administrador",
+        "SELLER" => "Vendedor",
+        "WAREHOUSE" => "Encargado de almacén",
+        "DISPATCH_LEAD" => "Jefe de despacho",
+        "DISPATCH_ASSISTANT" => "Ayudante",
+        "DRIVER" => "Repartidor",
+        _ => roleCode
+    };
 }

@@ -1,0 +1,56 @@
+@page "/dispatches"
+@inject ApiClient Api
+@inject ApiSession Session
+@inject NavigationManager Navigation
+<PageTitle>Despachos | Sora</PageTitle>
+<header class="page-heading"><div><span class="eyebrow">DISTRIBUCIÓN</span><h1>Despachos</h1><p>Asigna pedidos preparados y registra recepción, rechazo o inspección.</p></div></header>
+<div class="split-layout">
+@if(Session.HasPermission("dispatches.create"))
+{
+    <section class="panel form-panel"><h2>Nueva salida</h2><EditForm Model="Form" OnValidSubmit="Create"><DataAnnotationsValidator/>
+        <label>Vehículo (identificador interno)</label><InputText class="form-control" @bind-Value="Form.VehicleIdentifier" placeholder="Camión 1 / placa"/>
+        <label>ID de cuenta del chofer</label><InputText class="form-control" @bind-Value="DriverIdText" placeholder="UUID de usuario con rol Repartidor"/>
+        <label>Pedidos preparados</label>
+        <div class="order-select">@foreach(var o in ReadyOrders){<label class="check-row"><input type="checkbox" checked="@SelectedOrderIds.Contains(o.Id)" @onchange="e=>Toggle(o.Id,e.Value is true)"/><span><strong>@o.OrderNumber</strong> · @o.TotalAmount.ToString("0.00") Bs @if(o.IsNightOrder){<strong> · NOCTURNO / PRIMERA SALIDA @o.ScheduledDeliveryDate?.ToString("dd/MM")</strong>}</span></label>}</div>
+        @if(!ReadyOrders.Any()){<p class="empty">No hay pedidos preparados para asignar.</p>}
+        <button class="button primary" disabled="@(SelectedOrderIds.Count==0)">Confirmar salida</button>
+    </EditForm>
+</section>
+}
+@if(Session.HasPermission("dispatches.read"))
+{
+    <section class="panel"><div class="panel-title"><h2>Entregas asignadas</h2><button class="button secondary" @onclick="Load">Actualizar</button></div>
+        @if(AssignedDeliveries.Count==0){<p class="muted">No hay entregas pendientes asignadas.</p>}
+        @foreach(var delivery in AssignedDeliveries){<DeliveryTaskCard Task="delivery" CanRecord="@Session.HasPermission("dispatches.result")" OnSaved="Load"/>}
+    </section>
+}
+@if(Session.HasPermission("dispatches.inspect"))
+{
+    <section class="panel"><h2>Productos pendientes de inspección</h2>
+        @if(PendingInspections.Count==0){<p class="muted">No hay devoluciones pendientes de inspección.</p>}
+        else {<p class="muted">Las unidades rechazadas permanecen reservadas hasta que el jefe de despacho registre su revisión.</p>
+            @foreach(var inspection in PendingInspections){<div class="delivery-card"><h3>@inspection.OrderNumber · @(inspection.Result=="CANCELLED"?"Cancelación después de salida":"Rechazo")</h3><p>Tarifa registrada: Bs @inspection.CancellationFeeAmount.ToString("0.00") · Pagado: Bs @inspection.PaidAmount.ToString("0.00") · Saldo: Bs @inspection.BalanceDue.ToString("0.00")</p><label>Observación de inspección</label><InputText class="form-control" @bind-Value="inspection.Notes"/>
+                @if(inspection.PaidAmount>0){<label>Resolver el importe neto de tarifa</label><InputSelect class="form-select" @bind-Value="inspection.PaymentResolution"><option value="REFUND">Devolución</option><option value="CREDIT">Crédito para otra compra</option></InputSelect><label>Referencia de devolución / autorización</label><InputText class="form-control" @bind-Value="inspection.RefundReference"/>}
+                <div class="table-scroll"><table><thead><tr><th>Lote</th><th>Devueltas</th><th>Aptas para stock</th><th>Dañadas</th></tr></thead><tbody>@foreach(var lot in inspection.Lots){<tr><td>@lot.LotCode</td><td>@lot.PickedUnits</td><td><InputNumber class="form-control" min="0" max="@lot.PickedUnits" @bind-Value="lot.GoodUnits"/></td><td>@(lot.PickedUnits-lot.GoodUnits)</td></tr>}</tbody></table></div>
+                <button class="button primary" @onclick="()=>SaveInspection(inspection)">Guardar inspección</button>
+            </div>}
+        }
+    </section>
+}
+</div>
+@if(Error is not null){<div class="alert error">@Error</div>}
+@if(Notice is not null){<div class="alert success">@Notice</div>}
+@code {
+    private CreateDispatchRequest Form {get;set;}=new(); private string DriverIdText="";
+    private List<OrderResponse> AllOrders=[]; private List<Guid> SelectedOrderIds=[]; private List<AssignedDeliveryResponse> AssignedDeliveries=[];
+    private string? Error,Notice; private List<PendingInspectionCard> PendingInspections=[];
+    private IEnumerable<OrderResponse> ReadyOrders=>AllOrders.Where(x=>x.Fulfillment=="DELIVERY" && x.Status=="PREPARED")
+        .OrderByDescending(x=>x.IsNightOrder).ThenBy(x=>x.ScheduledDeliveryDate ?? DateOnly.MaxValue).ThenBy(x=>x.OrderNumber);
+    protected override async Task OnInitializedAsync(){if(!Session.IsSignedIn){Navigation.NavigateTo("/login");return;}if(!Session.CanAccessPage("dispatches")){Navigation.NavigateTo("/forbidden");return;}await Load();}
+    private async Task Load(){if(Session.HasPermission("dispatches.create")){var r=await Api.SendAsync<List<OrderResponse>>(HttpMethod.Get,"api/orders");if(r.IsSuccess)AllOrders=r.Value??[];else Error=r.Error;}if(Session.HasPermission("dispatches.read")){var a=await Api.SendAsync<List<AssignedDeliveryResponse>>(HttpMethod.Get,"api/dispatches/assigned");if(a.IsSuccess)AssignedDeliveries=a.Value??[];else Error=a.Error;}if(Session.HasPermission("dispatches.inspect")){var p=await Api.SendAsync<List<PendingInspectionResponse>>(HttpMethod.Get,"api/dispatches/pending-inspections");if(p.IsSuccess)PendingInspections=(p.Value??[]).Select(x=>new PendingInspectionCard(x)).ToList();else Error=p.Error;}}
+    private void Toggle(Guid id,bool selected){if(selected&&!SelectedOrderIds.Contains(id))SelectedOrderIds.Add(id);else SelectedOrderIds.Remove(id);}
+    private async Task Create(){if(!Guid.TryParse(DriverIdText,out var driver)){Error="Escribe un UUID válido para el chofer.";return;}var request=new CreateDispatchRequest{VehicleIdentifier=Form.VehicleIdentifier,DriverStaffId=driver,OrderIds=SelectedOrderIds};var r=await Api.SendAsync<DispatchResponse>(HttpMethod.Post,"api/dispatches",request);if(!r.IsSuccess){Error=r.Error;return;}Notice=$"Salida {r.Value?.DispatchNumber} registrada; unidades descontadas del stock.";Error=null;SelectedOrderIds.Clear();await Load();}
+    private async Task SaveInspection(PendingInspectionCard inspection){if(string.IsNullOrWhiteSpace(inspection.Notes)||inspection.Lots.Any(x=>x.GoodUnits<0||x.GoodUnits>x.PickedUnits)||inspection.PaidAmount>0&&string.IsNullOrWhiteSpace(inspection.RefundReference)){Error="Registra la observación, cantidades aptas y la referencia de la resolución del pago.";return;}var request=new InspectRejectedDeliveryRequest{Notes=inspection.Notes,PaymentResolution=inspection.PaidAmount>0?inspection.PaymentResolution:"NONE",RefundReference=inspection.RefundReference,Lots=inspection.Lots.Select(x=>new InspectedLotRequest{LotId=x.LotId,GoodUnits=x.GoodUnits,DamagedUnits=x.PickedUnits-x.GoodUnits}).ToList()};var r=await Api.SendAsync<object>(HttpMethod.Post,$"api/dispatches/orders/{inspection.DispatchOrderId}/inspection",request);if(!r.IsSuccess){Error=r.Error;return;}Notice="Inspección registrada; solo unidades aptas volvieron al stock y el pedido quedó cerrado.";Error=null;await Load();}
+    private sealed class PendingInspectionCard(PendingInspectionResponse response){public Guid DispatchOrderId=response.DispatchOrderId;public string OrderNumber=response.OrderNumber;public string Result=response.Result;public decimal CancellationFeeAmount=response.CancellationFeeAmount;public decimal PaidAmount=response.PaidAmount;public decimal BalanceDue=response.BalanceDue;public string PaymentResolution="REFUND";public string RefundReference="";public string Notes="";public List<PendingLotCard> Lots=response.Lots.Select(x=>new PendingLotCard(x)).ToList();}
+    private sealed class PendingLotCard(PendingInspectionLotResponse response){public Guid LotId=response.LotId;public string LotCode=response.LotCode;public int PickedUnits=response.PickedUnits;public int GoodUnits;}
+}

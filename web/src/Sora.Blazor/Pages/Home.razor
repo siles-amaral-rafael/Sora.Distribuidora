@@ -1,8 +1,33 @@
 ﻿@page "/"
+@inject ApiSession Session
+@inject NavigationManager Navigation
 
-<PageTitle>Home</PageTitle>
-
-<h1>Sora</h1>
-
-<p>Aplicación de distribución y trazabilidad logística.</p>
-<p>Interfaz Blazor WebAssembly independiente para la Revisión 4.</p>
+<PageTitle>Panel | Sora</PageTitle>
+<section class="hero">
+    <span class="eyebrow">DISTRIBUIDORA SORA · OPERACIONES</span>
+    <h1>Controla la operación desde un solo lugar.</h1>
+    <p>Clientes, catálogo, existencias, pedidos y entregas conectados con el inventario.</p>
+    @if (!Session.IsSignedIn)
+    {
+        <a class="button primary" href="login">Ingresar al sistema</a>
+    }
+    else
+    {
+        <div class="welcome">Sesión activa <strong>@Session.UserName</strong></div>
+    }
+</section>
+<section class="metric-grid">
+    @if(Session.CanAccessPage("customers")){<a class="metric-card" href="customers"><span>01</span><h2>Clientes</h2><p>Gestiona fichas, dirección y ubicación.</p></a>}
+    @if(Session.CanAccessPage("products")){<a class="metric-card" href="products"><span>02</span><h2>Productos</h2><p>Catálogo, precios y presentaciones.</p></a>}
+    @if(Session.CanAccessPage("suppliers")){<a class="metric-card" href="suppliers"><span>03</span><h2>Proveedores</h2><p>Directorio de proveedores.</p></a>}
+    @if(Session.CanAccessPage("inventory")){<a class="metric-card" href="inventory"><span>04</span><h2>Inventario</h2><p>Lotes, vencimientos, entradas y ajustes.</p></a>}
+    @if(Session.CanAccessPage("orders")){<a class="metric-card" href="orders"><span>05</span><h2>Pedidos</h2><p>Reservas de stock con prioridad FEFO.</p></a>}
+    @if(Session.CanAccessPage("dispatches")){<a class="metric-card" href="dispatches"><span>06</span><h2>Despachos</h2><p>Rutas, responsables y constancia de entrega.</p></a>}
+    @if(Session.CanAccessPage("staff")){<a class="metric-card" href="staff"><span>07</span><h2>Personal y roles</h2><p>Administra cuentas de acceso.</p></a>}
+</section>
+@code {
+    protected override void OnInitialized()
+    {
+        if (!Session.IsSignedIn) Navigation.NavigateTo("/login");
+    }
+}

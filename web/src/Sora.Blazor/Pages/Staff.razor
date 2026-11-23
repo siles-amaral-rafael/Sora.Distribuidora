@@ -1,0 +1,156 @@
+@page "/staff"
+@inject ApiClient Api
+@inject ApiSession Session
+@inject NavigationManager Navigation
+<PageTitle>Personal y permisos | Sora</PageTitle>
+<header class="page-heading"><div><span class="eyebrow">ADMINISTRACIÓN</span><h1>Personal, roles y permisos</h1><p>Administra cuentas, asignaciones y accesos por función.</p></div></header>
+@if (Session.HasPermission("staff.manage"))
+{
+    <div class="split-layout">
+        <section class="panel form-panel">
+            <h2>Registrar usuario</h2>
+            <EditForm Model="Form" OnValidSubmit="Create"><DataAnnotationsValidator/><ValidationSummary/>
+                <label>Nombre completo</label><InputText class="form-control" @bind-Value="Form.FullName"/>
+                <label>Correo electrónico</label><InputText class="form-control" type="email" @bind-Value="Form.Email"/>
+                <label>Contraseña temporal (mínimo 12 caracteres)</label><InputText class="form-control" type="password" @bind-Value="Form.TemporaryPassword"/>
+                <label>Roles</label>
+                @foreach (var role in Roles)
+                {
+                    <label class="check-row"><input type="checkbox" checked="@Form.RoleCodes.Contains(role.Code)" @onchange="e => ToggleCode(Form.RoleCodes, role.Code, e.Value is true)"/><span>@role.DisplayName</span></label>
+                }
+                <button class="button primary full" disabled="@(Form.RoleCodes.Count == 0)">Crear cuenta</button>
+            </EditForm>
+        </section>
+        <section class="panel">
+            <div class="panel-title"><h2>Cuentas del personal</h2><button class="button secondary" @onclick="LoadAll">Actualizar</button></div>
+            <div class="table-scroll"><table><thead><tr><th>Nombre</th><th>Correo</th><th>Roles</th><th>Estado</th><th>Acciones</th></tr></thead><tbody>
+            @foreach (var person in Accounts)
+            {
+                <tr><td><strong>@person.FullName</strong></td><td>@person.Email</td><td>@string.Join(", ", person.Roles.Select(x => x.DisplayName))</td><td>@(person.IsActive ? "Activo" : "Inactivo")</td><td class="row-actions"><button class="link-button" @onclick="() => BeginRoleEdit(person)">Roles</button><button class="link-button danger-text" @onclick="() => ToggleActive(person)">@(person.IsActive ? "Desactivar" : "Activar")</button></td></tr>
+                @if (EditingAccountId == person.Id)
+                {
+                    <tr><td colspan="5"><div class="permission-editor"><strong>Roles de @person.FullName</strong><div class="form-grid">
+                        @foreach (var role in Roles)
+                        {
+                            <label class="check-row"><input type="checkbox" checked="@EditRoleCodes.Contains(role.Code)" @onchange="e => ToggleCode(EditRoleCodes, role.Code, e.Value is true)"/><span>@role.DisplayName</span></label>
+                        }
+                    </div><button class="button primary" @onclick="SaveAccountRoles">Guardar roles</button> <button class="button secondary" @onclick="CancelAccountEdit">Cancelar</button></div></td></tr>
+                }
+            }
+            </tbody></table></div>
+        </section>
+    </div>
+    <section class="panel permission-panel"><div class="panel-title"><div><h2>Permisos por rol</h2><p class="muted">La API aplica los cambios inmediatamente. Cierra sesión y vuelve a entrar para actualizar la navegación de la interfaz.</p></div></div>
+        <label>Rol</label><InputSelect class="form-select permission-role-select" @bind-Value="SelectedRoleCode" @bind-Value:after="UpdateSelectedPermissions"><option value="">Selecciona un rol</option>@foreach (var role in Roles){<option value="@role.Code">@role.DisplayName</option>}</InputSelect>
+        @if (!string.IsNullOrWhiteSpace(SelectedRoleCode))
+        {
+            <div class="permission-grid">@foreach (var permission in Permissions)
+            {
+                <label class="check-row"><input type="checkbox" checked="@SelectedPermissions.Contains(permission.Code)" @onchange="e => ToggleCode(SelectedPermissions, permission.Code, e.Value is true)"/><span>@permission.DisplayName</span></label>
+            }</div>
+            <button class="button primary" @onclick="SavePermissions">Guardar permisos del rol</button>
+        }
+    </section>
+    <section class="panel"><div class="panel-title"><div><h2>Historial de cambios de acceso</h2><p class="muted">Últimos 200 movimientos administrativos.</p></div><button class="button secondary" @onclick="LoadAudit">Actualizar</button></div>
+        <div class="table-scroll"><table><thead><tr><th>Fecha y hora</th><th>Usuario responsable</th><th>Acción</th><th>Elemento</th><th>Detalle</th></tr></thead><tbody>
+        @foreach (var entry in AuditRows){<tr><td>@entry.OccurredAtUtc.ToLocalTime().ToString("yyyy-MM-dd HH:mm")</td><td>@entry.ActorName</td><td>@entry.Action</td><td>@entry.TargetType · @entry.TargetId</td><td><code>@entry.Details</code></td></tr>}
+        </tbody></table></div>
+    </section>
+}
+@if (Error is not null){<div class="alert error">@Error</div>}
+@if (Notice is not null){<div class="alert success">@Notice</div>}
+@code {
+    private CreateStaffAccountRequest Form { get; set; } = new();
+    private List<StaffRoleResponse> Roles = [];
+    private List<StaffPermissionResponse> Permissions = [];
+    private List<StaffAccountResponse> Accounts = [];
+    private List<StaffAuditResponse> AuditRows = [];
+    private HashSet<string> SelectedPermissions = new(StringComparer.OrdinalIgnoreCase);
+    private List<string> EditRoleCodes = [];
+    private Guid? EditingAccountId;
+    private string SelectedRoleCode = "";
+    private string? Error, Notice;
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (!Session.IsSignedIn) { Navigation.NavigateTo("/login"); return; }
+        if (!Session.CanAccessPage("staff")) { Navigation.NavigateTo("/forbidden"); return; }
+        var permissionResult = await Api.SendAsync<List<StaffPermissionResponse>>(HttpMethod.Get, "api/staff/permissions");
+        if (permissionResult.IsSuccess) Permissions = permissionResult.Value ?? [];
+        await LoadAll();
+    }
+
+    private async Task LoadAll()
+    {
+        var roles = await Api.SendAsync<List<StaffRoleResponse>>(HttpMethod.Get, "api/staff/roles");
+        if (roles.IsSuccess) Roles = roles.Value ?? []; else Error = roles.Error;
+        var accounts = await Api.SendAsync<List<StaffAccountResponse>>(HttpMethod.Get, "api/staff");
+        if (accounts.IsSuccess) Accounts = accounts.Value ?? []; else Error = accounts.Error;
+        await LoadAudit();
+        UpdateSelectedPermissions();
+    }
+
+    private async Task LoadAudit()
+    {
+        var result = await Api.SendAsync<List<StaffAuditResponse>>(HttpMethod.Get, "api/staff/audit");
+        if (result.IsSuccess) AuditRows = result.Value ?? []; else Error = result.Error;
+    }
+
+    private void UpdateSelectedPermissions()
+    {
+        SelectedPermissions = Roles.FirstOrDefault(x => x.Code == SelectedRoleCode)?.PermissionCodes
+            .ToHashSet(StringComparer.OrdinalIgnoreCase) ?? new(StringComparer.OrdinalIgnoreCase);
+    }
+
+    private static void ToggleCode(ICollection<string> selected, string code, bool enabled)
+    {
+        if (enabled && !selected.Contains(code, StringComparer.OrdinalIgnoreCase)) selected.Add(code);
+        else if (!enabled)
+        {
+            var existing = selected.FirstOrDefault(x => x.Equals(code, StringComparison.OrdinalIgnoreCase));
+            if (existing is not null) selected.Remove(existing);
+        }
+    }
+
+    private async Task Create()
+    {
+        var result = await Api.SendAsync<StaffAccountResponse>(HttpMethod.Post, "api/staff", Form);
+        if (!result.IsSuccess) { Error = result.Error; Notice = null; return; }
+        Notice = $"Cuenta creada para {result.Value?.FullName}. Comunica la contraseña temporal de forma segura.";
+        Error = null; Form = new(); await LoadAll();
+    }
+
+    private void BeginRoleEdit(StaffAccountResponse person)
+    {
+        EditingAccountId = person.Id;
+        EditRoleCodes = person.Roles.Select(x => x.Code).ToList();
+    }
+
+    private void CancelAccountEdit() { EditingAccountId = null; EditRoleCodes = []; }
+
+    private async Task SaveAccountRoles()
+    {
+        if (EditingAccountId is not Guid id) return;
+        var result = await Api.SendAsync<object>(HttpMethod.Put, $"api/staff/{id}/roles", new ReplaceStaffRolesRequest { RoleCodes = EditRoleCodes });
+        if (!result.IsSuccess) { Error = result.Error; Notice = null; return; }
+        Notice = "Roles actualizados y registrados en la auditoría."; Error = null; CancelAccountEdit(); await LoadAll();
+    }
+
+    private async Task ToggleActive(StaffAccountResponse person)
+    {
+        var active = !person.IsActive;
+        var result = await Api.SendAsync<object>(HttpMethod.Put, $"api/staff/{person.Id}/active", new SetStaffActiveRequest { IsActive = active });
+        if (!result.IsSuccess) { Error = result.Error; Notice = null; return; }
+        Notice = active ? "Cuenta activada." : "Cuenta desactivada."; Error = null; await LoadAll();
+    }
+
+    private async Task SavePermissions()
+    {
+        if (string.IsNullOrWhiteSpace(SelectedRoleCode)) return;
+        var result = await Api.SendAsync<object>(HttpMethod.Put, $"api/staff/roles/{SelectedRoleCode}/permissions",
+            new ReplaceRolePermissionsRequest { PermissionCodes = SelectedPermissions.ToList() });
+        if (!result.IsSuccess) { Error = result.Error; Notice = null; return; }
+        Notice = "Permisos actualizados y registrados en la auditoría. El rol Administrador debe conservar la gestión de usuarios.";
+        Error = null; await LoadAll();
+    }
+}
