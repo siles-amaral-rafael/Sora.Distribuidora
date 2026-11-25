@@ -1,6 +1,7 @@
 using Sora.Domain.Entities;
 using Sora.Domain.Repositories;
 using Sora.Shared.Products;
+using System.Security.Cryptography;
 
 namespace Sora.Application.Products;
 
@@ -17,7 +18,8 @@ public sealed class ProductService(IProductRepository products, TimeProvider tim
 
     public async Task<ServiceResult<ProductResponse>> CreateAsync(SaveProductRequest request, CancellationToken cancellationToken)
     {
-        var code = NormalizeCode(request.InternalCode);
+        var code = await ResolveCodeAsync(request.InternalCode, cancellationToken);
+        if (code is null) return ServiceResult<ProductResponse>.Failure("product_code_generation_failed");
         var barcode = NormalizeOptional(request.Barcode);
         if (await products.InternalCodeExistsAsync(code, null, cancellationToken))
         {
@@ -35,6 +37,41 @@ public sealed class ProductService(IProductRepository products, TimeProvider tim
         return ServiceResult<ProductResponse>.Success(ToResponse(product));
     }
 
+    public async Task<ServiceResult<IReadOnlyList<ProductResponse>>> CreateManyAsync(CreateProductsRequest request,
+        CancellationToken cancellationToken)
+    {
+        if (request.Products.Count is < 1 or > 50)
+            return ServiceResult<IReadOnlyList<ProductResponse>>.Failure("invalid_product_batch");
+
+        var newProducts = new List<Product>(request.Products.Count);
+        var barcodes = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var internalCodes = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var item in request.Products)
+        {
+            string? code = null;
+            for (var attempt = 0; attempt < 12 && code is null; attempt++)
+            {
+                var candidate = await ResolveCodeAsync(item.InternalCode, cancellationToken);
+                if (candidate is null) break;
+                if (internalCodes.Add(candidate)) code = candidate;
+                else if (!string.IsNullOrWhiteSpace(item.InternalCode))
+                    return ServiceResult<IReadOnlyList<ProductResponse>>.Failure("product_code_already_exists");
+            }
+            if (code is null)
+                return ServiceResult<IReadOnlyList<ProductResponse>>.Failure("product_code_generation_failed");
+            var barcode = NormalizeOptional(item.Barcode);
+            if (barcode is not null && (!barcodes.Add(barcode) ||
+                await products.BarcodeExistsAsync(barcode, null, cancellationToken)))
+                return ServiceResult<IReadOnlyList<ProductResponse>>.Failure("product_barcode_already_exists");
+            newProducts.Add(new Product(code, barcode, item.Name.Trim(), NormalizeOptional(item.Brand),
+                NormalizeOptional(item.Category), item.NetContent, NormalizeOptional(item.ContentUnit),
+                item.BaseUnit.Trim(), item.UnitSalePrice, timeProvider.GetUtcNow()));
+        }
+
+        await products.AddManyAsync(newProducts, cancellationToken);
+        return ServiceResult<IReadOnlyList<ProductResponse>>.Success(newProducts.Select(ToResponse).ToList());
+    }
+
     public async Task<ServiceResult<ProductResponse>> UpdateAsync(Guid id, SaveProductRequest request, CancellationToken cancellationToken)
     {
         var product = await products.FindByIdAsync(id, cancellationToken);
@@ -43,7 +80,9 @@ public sealed class ProductService(IProductRepository products, TimeProvider tim
             return ServiceResult<ProductResponse>.Failure("product_not_found");
         }
 
-        var code = NormalizeCode(request.InternalCode);
+        var code = string.IsNullOrWhiteSpace(request.InternalCode)
+            ? product.InternalCode
+            : NormalizeCode(request.InternalCode);
         var barcode = NormalizeOptional(request.Barcode);
         if (await products.InternalCodeExistsAsync(code, id, cancellationToken))
         {
@@ -160,6 +199,22 @@ public sealed class ProductService(IProductRepository products, TimeProvider tim
 
     private static string NormalizeCode(string code) => code.Trim().ToUpperInvariant();
     private static string? NormalizeOptional(string? value) => string.IsNullOrWhiteSpace(value) ? null : value.Trim();
+
+    private async Task<string?> ResolveCodeAsync(string? requested, CancellationToken cancellationToken)
+    {
+        if (!string.IsNullOrWhiteSpace(requested))
+        {
+            var supplied = NormalizeCode(requested);
+            return await products.InternalCodeExistsAsync(supplied, null, cancellationToken) ? null : supplied;
+        }
+
+        for (var attempt = 0; attempt < 12; attempt++)
+        {
+            var generated = RandomNumberGenerator.GetInt32(100_000_000, 1_000_000_000).ToString();
+            if (!await products.InternalCodeExistsAsync(generated, null, cancellationToken)) return generated;
+        }
+        return null;
+    }
 
     private static ProductResponse ToResponse(Product product) => new(
         product.Id, product.InternalCode, product.Barcode, product.Name, product.Brand,

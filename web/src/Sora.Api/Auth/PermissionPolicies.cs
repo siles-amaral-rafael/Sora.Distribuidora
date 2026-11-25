@@ -19,7 +19,6 @@ public static class PermissionPolicies
     public const string OrdersCancel = "orders.cancel";
     public const string OrdersPickup = "orders.pickup";
     public const string PaymentsRecord = "payments.record";
-    public const string NotificationsManage = "notifications.manage";
     public const string DispatchesRead = "dispatches.read";
     public const string DispatchesCreate = "dispatches.create";
     public const string DispatchesResult = "dispatches.result";
@@ -29,7 +28,7 @@ public static class PermissionPolicies
     [
         StaffRead, StaffManage, CustomersRead, CustomersWrite, ProductsRead, ProductsWrite, DiscountsManage,
         SuppliersRead, SuppliersWrite, InventoryRead, InventoryWrite, OrdersRead, OrdersWrite,
-        OrdersPrepare, OrdersCancel, OrdersPickup, PaymentsRecord, NotificationsManage, DispatchesRead, DispatchesCreate,
+        OrdersPrepare, OrdersCancel, OrdersPickup, PaymentsRecord, DispatchesRead, DispatchesCreate,
         DispatchesResult, DispatchesInspect
     ];
 }

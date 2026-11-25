@@ -15,5 +15,6 @@ var apiBaseAddress = Uri.TryCreate(configuredApiBase, UriKind.Absolute, out var 
 builder.Services.AddScoped(_ => new HttpClient { BaseAddress = apiBaseAddress });
 builder.Services.AddScoped<ApiSession>();
 builder.Services.AddScoped<ApiClient>();
+builder.Services.AddScoped<UiPreferencesService>();
 
 await builder.Build().RunAsync();

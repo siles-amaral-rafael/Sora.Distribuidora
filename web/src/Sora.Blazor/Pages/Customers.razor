@@ -4,39 +4,55 @@
 @inject NavigationManager Navigation
 
 <PageTitle>Clientes | Sora</PageTitle>
-<header class="page-heading"><div><span class="eyebrow">MAESTROS</span><h1>Clientes</h1><p>Fichas con dirección y coordenadas para organizar las entregas.</p></div></header>
-<div class="split-layout">
-    @if(Session.HasPermission("customers.write")){<section class="panel form-panel"><h2>@(EditingId is null ? "Nuevo cliente" : "Editar cliente")</h2>
-        <EditForm Model="Form" OnValidSubmit="Save"><DataAnnotationsValidator />
-            <label>Tipo</label><InputSelect class="form-select" @bind-Value="Form.CustomerType"><option value="STORE">Tienda</option><option value="FAMILY">Familia</option><option value="INSTITUTION">Institución</option></InputSelect>
-            <label>Nombre / razón social</label><InputText class="form-control" @bind-Value="Form.FullName" />
-            <label>Teléfono</label><InputText class="form-control" @bind-Value="Form.Phone" />
-            <label>Dirección</label><InputText class="form-control" @bind-Value="Form.PrimaryAddress" />
-            <div class="form-grid"><div><label>Latitud</label><InputNumber class="form-control" @bind-Value="Form.Latitude" /></div><div><label>Longitud</label><InputNumber class="form-control" @bind-Value="Form.Longitude" /></div></div>
-            <div class="actions"><button class="button primary">Guardar cliente</button><button type="button" class="button secondary" @onclick="Reset">Limpiar</button></div>
-        </EditForm>
-        @if (Error is not null) { <div class="alert error">@Error</div> }
-        @if (Notice is not null) { <div class="alert success">@Notice</div> }
-    </section>}
+<header class="page-heading"><div><span class="eyebrow">MAESTROS</span><h1>Clientes</h1><p>Fichas con dirección y coordenadas para organizar las entregas.</p></div>@if(Session.HasPermission("customers.write")){<button class="button primary" @onclick="OpenNew">+ Nuevo cliente</button>}</header>
+<div class="directory-page">
     <section class="panel"><div class="panel-title"><h2>Directorio</h2><button class="button secondary" @onclick="Load">Actualizar</button></div>
-        <div class="table-scroll"><table><thead><tr><th>Cliente</th><th>Tipo</th><th>Teléfono</th><th>Dirección</th><th></th></tr></thead><tbody>
-        @foreach (var item in CustomerRows) { <tr><td><strong>@item.FullName</strong></td><td>@TypeName(item.CustomerType)</td><td>@item.Phone</td><td>@item.PrimaryAddress</td><td class="row-actions">@if(Session.HasPermission("customers.write")){<button class="link-button" @onclick="() => Edit(item)">Editar</button><button class="link-button danger-text" @onclick="() => Deactivate(item)">Desactivar</button>}</td></tr> }
-        </tbody></table></div>
+        <CollectionBrowser TItem="CustomerResponse" Items="CustomerRows" Columns="CustomerColumns" Context="pageRows">
+            <div class="table-scroll"><table><thead><tr><th>Cliente</th><th>Tipo</th><th>Teléfono</th><th>Dirección</th><th></th></tr></thead><tbody>
+            @foreach (var item in pageRows) { <tr><td><strong>@item.FullName</strong></td><td>@TypeName(item.CustomerType)</td><td>@item.Phone</td><td>@item.PrimaryAddress</td><td class="row-actions">@if(Session.HasPermission("customers.write")){<button class="link-button" @onclick="() => Edit(item)">Editar</button><button class="link-button danger-text" @onclick="() => Deactivate(item)">Desactivar</button>}</td></tr> }
+            </tbody></table></div>
+        </CollectionBrowser>
         @if (CustomerRows.Count == 0) { <p class="empty">Todavía no hay clientes registrados.</p> }
     </section>
+    @if(Session.HasPermission("customers.write"))
+    {
+        <FormModal IsOpen="FormOpen" Title="@(EditingId is null ? "Nuevo cliente" : "Editar cliente")" OnClose="CloseForm">
+            <EditForm Model="Form" OnValidSubmit="Save"><DataAnnotationsValidator />
+                <label>Tipo</label><InputSelect class="form-select" @bind-Value="Form.CustomerType"><option value="STORE">Tienda</option><option value="FAMILY">Familia</option><option value="INSTITUTION">Institución</option></InputSelect>
+                <label>Nombre / razón social</label><InputText class="form-control" @bind-Value="Form.FullName" />
+                <label>Teléfono</label><InputText class="form-control" @bind-Value="Form.Phone" />
+                <label>Dirección</label><InputText class="form-control" @bind-Value="Form.PrimaryAddress" />
+                <div class="location-picker-field"><MapLocationPicker Latitude="Form.Latitude" Longitude="Form.Longitude" OnSelected="ApplyCoordinates" /><span class="muted">Selecciona el punto exacto de entrega en el mapa o introduce las coordenadas manualmente.</span></div>
+                <div class="form-grid"><div><label>Latitud</label><InputNumber class="form-control" @bind-Value="Form.Latitude" /></div><div><label>Longitud</label><InputNumber class="form-control" @bind-Value="Form.Longitude" /></div></div>
+                @if (Error is not null) { <div class="alert error">@Error</div> }
+                <div class="actions"><button class="button primary">Guardar cliente</button><button type="button" class="button secondary" @onclick="Reset">Cancelar</button></div>
+            </EditForm>
+        </FormModal>
+    }
 </div>
 
 @code {
+    private static readonly CollectionColumn<CustomerResponse>[] CustomerColumns =
+    [
+        new("name", "Cliente", x => x.FullName, x => x.FullName),
+        new("type", "Tipo", x => TypeName(x.CustomerType), x => TypeName(x.CustomerType)),
+        new("phone", "Teléfono", x => x.Phone, x => x.Phone),
+        new("address", "Dirección", x => x.PrimaryAddress, x => x.PrimaryAddress)
+    ];
     private List<CustomerResponse> CustomerRows = [];
     private SaveCustomerRequest Form { get; set; } = NewForm();
     private Guid? EditingId;
+    private bool FormOpen;
     private string? Error, Notice;
     protected override async Task OnInitializedAsync() { if (!Session.IsSignedIn) { Navigation.NavigateTo("/login"); return; } if(!Session.CanAccessPage("customers")){Navigation.NavigateTo("/forbidden");return;} await Load(); }
     private async Task Load() { var r = await Api.SendAsync<List<CustomerResponse>>(HttpMethod.Get, "api/customers"); if (r.IsSuccess) CustomerRows = r.Value ?? []; else Error = r.Error; }
-    private async Task Save() { var r = await Api.SendAsync<CustomerResponse>(EditingId is null ? HttpMethod.Post : HttpMethod.Put, EditingId is null ? "api/customers" : $"api/customers/{EditingId}", Form); if (!r.IsSuccess) { Error = r.Error ?? "No se pudo guardar."; return; } Notice = "Ficha guardada."; Error = null; Reset(); await Load(); }
-    private void Edit(CustomerResponse c) { EditingId = c.Id; Form = new() { CustomerType=c.CustomerType, FullName=c.FullName, Phone=c.Phone, PrimaryAddress=c.PrimaryAddress, Latitude=c.Latitude, Longitude=c.Longitude }; }
+    private async Task Save() { var r = await Api.SendAsync<CustomerResponse>(EditingId is null ? HttpMethod.Post : HttpMethod.Put, EditingId is null ? "api/customers" : $"api/customers/{EditingId}", Form); if (!r.IsSuccess) { Error = r.Error ?? "No se pudo guardar."; return; } Notice = EditingId is null ? "Cliente registrado." : "Cliente actualizado."; Error = null; Reset(); await Load(); }
+    private void OpenNew() { EditingId = null; Form = NewForm(); Error = null; FormOpen = true; }
+    private void Edit(CustomerResponse c) { EditingId = c.Id; Form = new() { CustomerType=c.CustomerType, FullName=c.FullName, Phone=c.Phone, PrimaryAddress=c.PrimaryAddress, Latitude=c.Latitude, Longitude=c.Longitude }; Error = null; FormOpen = true; }
+    private void ApplyCoordinates(MapCoordinates coordinates) { Form.Latitude = (decimal)coordinates.Latitude; Form.Longitude = (decimal)coordinates.Longitude; }
     private async Task Deactivate(CustomerResponse c) { var r = await Api.SendAsync<object>(HttpMethod.Delete, $"api/customers/{c.Id}"); if (r.IsSuccess) { Notice = "Cliente desactivado."; await Load(); } else Error = r.Error; }
-    private void Reset() { EditingId = null; Form = NewForm(); }
+    private void Reset() { EditingId = null; Form = NewForm(); FormOpen = false; Error = null; }
+    private void CloseForm() { FormOpen = false; Error = null; }
     private static SaveCustomerRequest NewForm() => new() { CustomerType="STORE" };
     private static string TypeName(string type) => type switch { "STORE" => "Tienda", "FAMILY" => "Familia", _ => "Institución" };
 }

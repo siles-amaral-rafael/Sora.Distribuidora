@@ -46,4 +46,17 @@ public sealed class SuppliersController(ISupplierService suppliers) : Controller
         await suppliers.DeactivateAsync(id, cancellationToken)
             ? NoContent()
             : NotFound(new { code = "supplier_not_found" });
+
+    [Authorize(Policy = PermissionPolicies.SuppliersWrite)]
+    [HttpPut("{id:guid}/products")]
+    public async Task<IActionResult> ReplaceProducts(Guid id, ReplaceSupplierProductsRequest request,
+        CancellationToken cancellationToken)
+    {
+        var result = await suppliers.ReplaceProductsAsync(id, request, cancellationToken);
+        if (!result.Succeeded)
+            return result.ErrorCode == "supplier_or_product_not_found"
+                ? NotFound(new { code = result.ErrorCode })
+                : BadRequest(new { code = result.ErrorCode });
+        return Ok(result.Value);
+    }
 }

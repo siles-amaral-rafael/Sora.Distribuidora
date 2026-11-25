@@ -53,7 +53,7 @@ public sealed class OrderRepository(SoraDbContext db) : IOrderRepository
                 fulfillment
                 ,isNightOrder, scheduledDeliveryDate
             }, now);
-            AddNotification(order, customer, "ORDER_RECEIVED", OrderReceivedMessage(order, pending: true), now);
+
             await db.SaveChangesAsync(cancellationToken);
             await tx.CommitAsync(cancellationToken);
             return new(CreateOrderResultCode.PendingConfirmation, order);
@@ -78,7 +78,7 @@ public sealed class OrderRepository(SoraDbContext db) : IOrderRepository
             lines = createdLines.Select(x => new { x.ProductId, x.QuantityUnits, x.UnitSalePriceSnapshot, x.DiscountAmount, x.LineTotal }),
             order.TotalAmount
         }, now);
-        AddNotification(order, customer, "ORDER_RECEIVED", OrderReceivedMessage(order, pending: false), now);
+
         await db.SaveChangesAsync(cancellationToken);
         await tx.CommitAsync(cancellationToken);
         return new(CreateOrderResultCode.Created, order);
@@ -101,8 +101,6 @@ public sealed class OrderRepository(SoraDbContext db) : IOrderRepository
         if (!await CanFulfillAsync(order, cancellationToken)) return PrepareOrderResultCode.PaymentRequired;
         order.SetStatus("PREPARED");
         AddHistory(order, actorId, "order.prepared", new { order.OrderNumber }, now);
-        var customer = await db.Customers.SingleAsync(x => x.Id == order.CustomerId, cancellationToken);
-        AddNotification(order, customer, "ORDER_PREPARED", $"El pedido {order.OrderNumber} está preparado.", now);
         await db.SaveChangesAsync(cancellationToken);
         await tx.CommitAsync(cancellationToken);
         return PrepareOrderResultCode.Prepared;
@@ -249,6 +247,12 @@ public sealed class OrderRepository(SoraDbContext db) : IOrderRepository
             await db.DispatchOrders.AnyAsync(x => x.OrderId == orderId && x.Result == "NOT_FOUND", cancellationToken) &&
             !await db.DispatchOrders.AnyAsync(x => x.OrderId == orderId && x.Result == null, cancellationToken);
         if (completePickup && order.Fulfillment is not ("PICKUP_NOW" or "PICKUP_LATER") && !pickupAfterFailedAttempt) return OrderTransitionCode.InvalidState;
+        if (completePickup)
+        {
+            var paidForPickup = await db.OrderPayments.Where(x => x.OrderId == orderId)
+                .SumAsync(x => (decimal?)x.Amount, cancellationToken) ?? 0m;
+            if (paidForPickup < order.TotalAmount) return OrderTransitionCode.PaymentRequired;
+        }
         if (completePickup && !await CanFulfillAsync(order, cancellationToken)) return OrderTransitionCode.InvalidState;
         if (!completePickup && order.Status is not ("PENDING_CONFIRMATION" or "REGISTERED" or "PREPARED"))
             return OrderTransitionCode.InvalidState;
@@ -313,11 +317,6 @@ public sealed class OrderRepository(SoraDbContext db) : IOrderRepository
         }
         AddHistory(order, actorId, completePickup ? "order.pickup_completed" : "order.cancelled",
             new { order.OrderNumber, order.TotalAmount, resolution = resolution.ToString(), paidAmount, creditRestoredAmount }, now);
-        if (completePickup)
-        {
-            var customer = await db.Customers.SingleAsync(x => x.Id == order.CustomerId, cancellationToken);
-            AddNotification(order, customer, "DELIVERY_COMPLETED", $"El pedido {order.OrderNumber} fue entregado en la empresa.", now);
-        }
         await db.SaveChangesAsync(cancellationToken);
         await tx.CommitAsync(cancellationToken);
         return OrderTransitionCode.Applied;
@@ -372,14 +371,6 @@ public sealed class OrderRepository(SoraDbContext db) : IOrderRepository
             remainingCustomerCredit = customer.CreditBalance
         }, now);
     }
-
-    private void AddNotification(SalesOrder order, Customer customer, string eventType, string message, DateTimeOffset now) =>
-        db.NotificationOutbox.Add(new NotificationOutboxEntry(order.Id, customer.Id, eventType, customer.Phone, message, now));
-
-    private static string OrderReceivedMessage(SalesOrder order, bool pending) =>
-        $"Recibimos el pedido {order.OrderNumber}" +
-        (pending ? ". Está pendiente de confirmar disponibilidad." : $" por Bs {order.TotalAmount:0.00}.") +
-        (order.IsNightOrder ? $" Pedido nocturno programado para primera salida del {order.ScheduledDeliveryDate:dd/MM/yyyy}." : string.Empty);
 
     private Task<SalesOrder?> LockOrderAsync(Guid id, CancellationToken cancellationToken) =>
         db.SalesOrders.FromSqlInterpolated($"SELECT * FROM sales_orders WHERE id = {id} FOR UPDATE")

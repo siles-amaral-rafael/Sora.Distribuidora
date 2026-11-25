@@ -37,6 +37,7 @@ public sealed class InspectedLotRequest
 
 public sealed record DispatchResponse(Guid Id, string DispatchNumber, string VehicleIdentifier,
     Guid DriverStaffId, DateTimeOffset DepartedAtUtc, IReadOnlyList<DispatchOrderReference> Orders);
+public sealed record DispatchDriverResponse(Guid Id, string FullName, string Email);
 public sealed record DispatchOrderReference(Guid DispatchOrderId, Guid OrderId);
 public sealed record PendingInspectionResponse(Guid DispatchOrderId, Guid OrderId, string OrderNumber,
     IReadOnlyList<PendingInspectionLotResponse> Lots, string Result, decimal CancellationFeeAmount,

@@ -1,0 +1,103 @@
+@implements IAsyncDisposable
+@inject IJSRuntime JS
+
+<button type="button" class="button secondary" @onclick="OpenMap">Elegir ubicación en el mapa</button>
+@if (IsOpen)
+{
+    <div class="map-picker-backdrop" @onclick="CloseMap">
+        <section class="map-picker-dialog" role="dialog" aria-modal="true" aria-labelledby="map-picker-title" @onclick:stopPropagation="true">
+            <header class="map-picker-header">
+                <div><h2 id="map-picker-title">Selecciona la ubicación del cliente</h2><p class="muted">Haz clic en el mapa para colocar el marcador. Puedes arrastrarlo para ajustar el punto.</p></div>
+                <button type="button" class="button secondary small" @onclick="CloseMap">Cerrar</button>
+            </header>
+            <div class="map-picker-tools">@if (HasSelection) { <span class="map-coordinates">Punto seleccionado: @SelectedLatitude.ToString("F6"), @SelectedLongitude.ToString("F6")</span> } else { <span class="muted">Haz clic en el punto que corresponde a la dirección.</span> }</div>
+            <div class="map-picker-canvas" @ref="MapElement"></div>
+            @if (!string.IsNullOrWhiteSpace(MapError)) { <div class="alert error">@MapError</div> }
+            <p class="map-attribution">Mapa © OpenStreetMap contributors. Los mosaicos requieren conexión a Internet.</p>
+            <footer class="map-picker-footer">
+                <button type="button" class="button secondary" @onclick="CloseMap">Cancelar</button>
+                <button type="button" class="button primary" disabled="@(!HasSelection)" @onclick="Confirm">Usar esta ubicación</button>
+            </footer>
+        </section>
+    </div>
+}
+
+@code {
+    [Parameter] public decimal? Latitude { get; set; }
+    [Parameter] public decimal? Longitude { get; set; }
+    [Parameter] public EventCallback<MapCoordinates> OnSelected { get; set; }
+
+    private ElementReference MapElement;
+    private IJSObjectReference? Module;
+    private DotNetObjectReference<MapLocationPicker>? DotNetReference;
+    private bool IsOpen;
+    private bool MapInitialized;
+    private bool HasSelection;
+    private double SelectedLatitude;
+    private double SelectedLongitude;
+    private string? MapError;
+
+    private void OpenMap()
+    {
+        SelectedLatitude = Latitude is decimal lat ? (double)lat : -17.7833;
+        SelectedLongitude = Longitude is decimal lon ? (double)lon : -63.1821;
+        HasSelection = Latitude.HasValue && Longitude.HasValue;
+        MapError = null;
+        MapInitialized = false;
+        IsOpen = true;
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!IsOpen || MapInitialized) return;
+        MapInitialized = true;
+        try
+        {
+            Module ??= await JS.InvokeAsync<IJSObjectReference>("import", "./js/map-picker.js");
+            DotNetReference ??= DotNetObjectReference.Create(this);
+            await Module.InvokeVoidAsync("initialize", MapElement, SelectedLatitude, SelectedLongitude, HasSelection, DotNetReference);
+        }
+        catch (Exception)
+        {
+            MapError = "No se pudo cargar el mapa. Comprueba tu conexión a Internet y vuelve a abrirlo; también puedes introducir las coordenadas manualmente.";
+            await InvokeAsync(StateHasChanged);
+        }
+    }
+
+    [JSInvokable]
+    public Task SelectCoordinates(double latitude, double longitude)
+    {
+        SelectedLatitude = latitude;
+        SelectedLongitude = longitude;
+        HasSelection = true;
+        MapError = null;
+        return InvokeAsync(StateHasChanged);
+    }
+
+    private async Task Confirm()
+    {
+        if (!HasSelection) return;
+        await OnSelected.InvokeAsync(new(SelectedLatitude, SelectedLongitude));
+        await CloseMap();
+    }
+
+    private async Task CloseMap()
+    {
+        if (Module is not null)
+        {
+            try { await Module.InvokeVoidAsync("destroy", MapElement); } catch (JSDisconnectedException) { }
+        }
+        IsOpen = false;
+        MapInitialized = false;
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        if (Module is not null)
+        {
+            try { await Module.InvokeVoidAsync("destroy", MapElement); await Module.DisposeAsync(); }
+            catch (JSDisconnectedException) { }
+        }
+        DotNetReference?.Dispose();
+    }
+}

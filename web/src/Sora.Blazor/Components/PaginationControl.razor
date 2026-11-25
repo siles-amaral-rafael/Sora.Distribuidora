@@ -1,0 +1,46 @@
+@typeparam TItem
+<div class="pagination-content">
+    @ChildContent(VisibleItems)
+</div>
+@if (Items.Count > 0)
+{
+    <nav class="pagination-bar" aria-label="Paginación de resultados">
+        <label class="page-size-label">Filas por página
+            <select class="form-select page-size-select" value="@PageSize" @onchange="ChangePageSize" aria-label="Filas por página">
+                @foreach (var size in PageSizeOptions) { <option value="@size">@size</option> }
+            </select>
+        </label>
+        <span class="pagination-summary">@FirstItem–@LastItem de @Items.Count</span>
+        <div class="pagination-actions">
+            <button type="button" class="page-button" @onclick="Previous" disabled="@(PageIndex == 0)" aria-label="Página anterior">Anterior</button>
+            <span class="page-indicator" aria-live="polite">Página @(PageIndex + 1) de @TotalPages</span>
+            <button type="button" class="page-button" @onclick="Next" disabled="@(PageIndex + 1 >= TotalPages)" aria-label="Página siguiente">Siguiente</button>
+        </div>
+    </nav>
+}
+
+@code {
+    [Parameter, EditorRequired] public IReadOnlyList<TItem> Items { get; set; } = Array.Empty<TItem>();
+    [Parameter] public int InitialPageSize { get; set; } = 10;
+    [Parameter] public RenderFragment<IReadOnlyList<TItem>> ChildContent { get; set; } = default!;
+
+    private static readonly int[] PageSizeOptions = [10, 25, 50];
+    private int PageSize = 10;
+    private int PageIndex;
+    private int TotalPages => Math.Max(1, (int)Math.Ceiling((double)Items.Count / PageSize));
+    private int FirstItem => Items.Count == 0 ? 0 : PageIndex * PageSize + 1;
+    private int LastItem => Math.Min((PageIndex + 1) * PageSize, Items.Count);
+    private IReadOnlyList<TItem> VisibleItems => Items.Skip(PageIndex * PageSize).Take(PageSize).ToArray();
+
+    protected override void OnInitialized() => PageSize = PageSizeOptions.Contains(InitialPageSize) ? InitialPageSize : 10;
+    protected override void OnParametersSet() => PageIndex = Math.Clamp(PageIndex, 0, TotalPages - 1);
+    private void Previous() => PageIndex = Math.Max(0, PageIndex - 1);
+    private void Next() => PageIndex = Math.Min(TotalPages - 1, PageIndex + 1);
+    private void ChangePageSize(ChangeEventArgs e)
+    {
+        if (!int.TryParse(e.Value?.ToString(), out var size) || !PageSizeOptions.Contains(size)) return;
+        var firstVisible = PageIndex * PageSize;
+        PageSize = size;
+        PageIndex = firstVisible / PageSize;
+    }
+}

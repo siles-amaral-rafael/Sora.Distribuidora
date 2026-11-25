@@ -4,36 +4,60 @@
 @inject NavigationManager Navigation
 <PageTitle>Despachos | Sora</PageTitle>
 <header class="page-heading"><div><span class="eyebrow">DISTRIBUCIÓN</span><h1>Despachos</h1><p>Asigna pedidos preparados y registra recepción, rechazo o inspección.</p></div></header>
-<div class="split-layout">
-@if(Session.HasPermission("dispatches.create"))
+<nav class="dispatch-tabs" role="tablist" aria-label="Tareas de despacho">
+    @if(Session.HasPermission("dispatches.create") || Session.HasPermission("orders.prepare")){<button type="button" role="tab" class="dispatch-tab @(SelectedTab=="preparation"?"active":"")" aria-selected="@(SelectedTab=="preparation")" @onclick='()=>SelectTab("preparation")'>Preparación <span>@QueueOrders.Count</span></button>}
+    @if(Session.HasPermission("dispatches.read")){<button type="button" role="tab" class="dispatch-tab @(SelectedTab=="deliveries"?"active":"")" aria-selected="@(SelectedTab=="deliveries")" @onclick='()=>SelectTab("deliveries")'>Entregas asignadas <span>@AssignedDeliveries.Count</span></button>}
+    @if(Session.HasPermission("dispatches.inspect")){<button type="button" role="tab" class="dispatch-tab @(SelectedTab=="returns"?"active":"")" aria-selected="@(SelectedTab=="returns")" @onclick='()=>SelectTab("returns")'>Retornos e inspección <span>@PendingInspections.Count</span></button>}
+</nav>
+<div class="dispatch-tab-content">
+@if(SelectedTab=="preparation")
 {
-    <section class="panel form-panel"><h2>Nueva salida</h2><EditForm Model="Form" OnValidSubmit="Create"><DataAnnotationsValidator/>
-        <label>Vehículo (identificador interno)</label><InputText class="form-control" @bind-Value="Form.VehicleIdentifier" placeholder="Camión 1 / placa"/>
-        <label>ID de cuenta del chofer</label><InputText class="form-control" @bind-Value="DriverIdText" placeholder="UUID de usuario con rol Repartidor"/>
-        <label>Pedidos preparados</label>
-        <div class="order-select">@foreach(var o in ReadyOrders){<label class="check-row"><input type="checkbox" checked="@SelectedOrderIds.Contains(o.Id)" @onchange="e=>Toggle(o.Id,e.Value is true)"/><span><strong>@o.OrderNumber</strong> · @o.TotalAmount.ToString("0.00") Bs @if(o.IsNightOrder){<strong> · NOCTURNO / PRIMERA SALIDA @o.ScheduledDeliveryDate?.ToString("dd/MM")</strong>}</span></label>}</div>
-        @if(!ReadyOrders.Any()){<p class="empty">No hay pedidos preparados para asignar.</p>}
-        <button class="button primary" disabled="@(SelectedOrderIds.Count==0)">Confirmar salida</button>
-    </EditForm>
-</section>
+    @if(Session.HasPermission("dispatches.create") || Session.HasPermission("orders.prepare"))
+    {
+        <section class="panel dispatch-queue-panel"><div class="panel-title"><div><span class="eyebrow">COLA DE DESPACHO</span><h2>Estado y preparación de pedidos</h2><p class="muted">Selecciona pedidos listos para salida o confirma su preparación.</p></div><button class="button secondary" @onclick="Load">Actualizar</button></div>
+            @if(!QueueOrders.Any()){<p class="empty">No hay pedidos pendientes de coordinar para despacho.</p>}
+            <CollectionBrowser TItem="OrderResponse" Items="QueueOrders" Columns="QueueColumns" Context="queueRows"><div class="dispatch-queue-grid">@foreach(var order in queueRows){<article class="dispatch-queue-card"><div class="dispatch-queue-card-head"><strong>@order.OrderNumber</strong><span class="status-pill @OrderStatusCss(order.Status)">@OrderStatusName(order.Status)</span></div><p>@CustomerName(order.CustomerId)</p><div class="dispatch-queue-meta"><span>@DispatchFulfillment(order.Fulfillment)</span><strong>Bs @order.TotalAmount.ToString("0.00")</strong></div><small class="payment-state @(order.BalanceDue<=0?"paid":order.PaidAmount>0?"partial":"unpaid")">Pagado Bs @order.PaidAmount.ToString("0.00") · saldo Bs @order.BalanceDue.ToString("0.00")</small>
+                @if(order.Status=="PENDING_CONFIRMATION"){<small class="muted">Falta resolver disponibilidad. Revisa el pedido en Ventas.</small><a class="text-link" href="orders">Abrir pedidos →</a>}
+                else if(order.Status=="REGISTERED"){<small class="muted">Pedido registrado; requiere el pago aplicable antes de marcarlo listo.</small>@if(Session.HasPermission("orders.prepare")){<button class="button secondary full" @onclick="()=>MarkPrepared(order)">Confirmar que está preparado</button>}}
+                else if(order.Status=="PREPARED" && Session.HasPermission("dispatches.create")){<small class="ready-note">Listo para asignar a una salida.</small><button class="button @(SelectedOrderIds.Contains(order.Id)?"secondary":"primary") full" @onclick='()=>Toggle(order.Id,!SelectedOrderIds.Contains(order.Id))'>@((SelectedOrderIds.Contains(order.Id))?"Quitar de salida":"Agregar a salida")</button>}
+            </article>}</div></CollectionBrowser>
+        </section>
+    }
+    @if(Session.HasPermission("dispatches.create"))
+    {
+        <section class="panel form-panel dispatch-create-panel"><div class="panel-title"><div><span class="eyebrow">NUEVA RUTA</span><h2>Crear salida</h2></div></div><EditForm Model="Form" OnValidSubmit="Create"><DataAnnotationsValidator/>
+            <div class="dispatch-create-fields"><div><label>Vehículo</label><InputText class="form-control" @bind-Value="Form.VehicleIdentifier" placeholder="Camión 1 / placa"/></div><div><label>Buscar repartidor por nombre, correo o código</label><InputText class="form-control" @bind-Value="DriverSearch" @bind:event="oninput" @bind:after="SearchDrivers" placeholder="Empieza a escribir el nombre"/></div></div>
+            @if(DriverChoices.Count>0 && SelectedDriver is null){<div class="driver-suggestions">@foreach(var driver in DriverChoices){<button type="button" class="driver-suggestion" @onclick="()=>SelectDriver(driver)"><strong>@driver.FullName</strong><small>@driver.Email · @driver.Id</small></button>}</div>}
+            @if(SelectedDriver is not null){<div class="selected-driver"><div><small>REPARTIDOR SELECCIONADO</small><strong>@SelectedDriver.FullName</strong><span>@SelectedDriver.Email</span></div><button type="button" class="button secondary small" @onclick="ClearDriver">Cambiar</button></div>}
+            <div class="dispatch-selection"><div class="dispatch-selection-heading"><strong>Pedidos seleccionados</strong><span>@SelectedOrderIds.Count</span></div>
+                @if(!SelectedOrders.Any()){<p class="muted">Elige pedidos con estado “Listo para salida” en la cola superior.</p>}
+                else{@foreach(var order in SelectedOrders){<div class="selected-order-row"><span><strong>@order.OrderNumber</strong><small>@CustomerName(order.CustomerId) · Bs @order.TotalAmount.ToString("0.00") @if(order.IsNightOrder){<b> · PRIMERA SALIDA</b>}</small></span><button type="button" class="button secondary small" @onclick="()=>Toggle(order.Id,false)">Quitar</button></div>}}
+            </div>
+            <button class="button primary" disabled="@(SelectedOrderIds.Count==0 || SelectedDriver is null || string.IsNullOrWhiteSpace(Form.VehicleIdentifier))">Crear salida y confirmar despacho</button>
+        </EditForm></section>
+    }
 }
-@if(Session.HasPermission("dispatches.read"))
+else if(SelectedTab=="deliveries" && Session.HasPermission("dispatches.read"))
 {
-    <section class="panel"><div class="panel-title"><h2>Entregas asignadas</h2><button class="button secondary" @onclick="Load">Actualizar</button></div>
-        @if(AssignedDeliveries.Count==0){<p class="muted">No hay entregas pendientes asignadas.</p>}
-        @foreach(var delivery in AssignedDeliveries){<DeliveryTaskCard Task="delivery" CanRecord="@Session.HasPermission("dispatches.result")" OnSaved="Load"/>}
+    <section class="panel"><div class="panel-title"><div><span class="eyebrow">EN RUTA</span><h2>Entregas asignadas</h2><p class="muted">Abre una entrega para registrar el resultado y la firma.</p></div><button class="button secondary" @onclick="Load">Actualizar</button></div>
+        @if(AssignedDeliveries.Count==0){<p class="empty">No hay entregas pendientes asignadas.</p>}
+        <CollectionBrowser TItem="AssignedDeliveryResponse" Items="AssignedDeliveries" Columns="AssignedColumns" Context="assignedRows">
+            @foreach(var delivery in assignedRows){<DeliveryTaskCard Task="delivery" CanRecord="@Session.HasPermission("dispatches.result")" OnSaved="Load"/>}
+        </CollectionBrowser>
     </section>
 }
-@if(Session.HasPermission("dispatches.inspect"))
+else if(SelectedTab=="returns" && Session.HasPermission("dispatches.inspect"))
 {
-    <section class="panel"><h2>Productos pendientes de inspección</h2>
-        @if(PendingInspections.Count==0){<p class="muted">No hay devoluciones pendientes de inspección.</p>}
-        else {<p class="muted">Las unidades rechazadas permanecen reservadas hasta que el jefe de despacho registre su revisión.</p>
-            @foreach(var inspection in PendingInspections){<div class="delivery-card"><h3>@inspection.OrderNumber · @(inspection.Result=="CANCELLED"?"Cancelación después de salida":"Rechazo")</h3><p>Tarifa registrada: Bs @inspection.CancellationFeeAmount.ToString("0.00") · Pagado: Bs @inspection.PaidAmount.ToString("0.00") · Saldo: Bs @inspection.BalanceDue.ToString("0.00")</p><label>Observación de inspección</label><InputText class="form-control" @bind-Value="inspection.Notes"/>
+    <section class="panel"><div class="panel-title"><div><span class="eyebrow">CONTROL DE DEVOLUCIONES</span><h2>Retornos e inspección</h2><p class="muted">Solo las unidades aptas vuelven al stock después de inspeccionarlas.</p></div><button class="button secondary" @onclick="Load">Actualizar</button></div>
+        @if(PendingInspections.Count==0){<p class="empty">No hay devoluciones pendientes de inspección.</p>}
+        else{
+            <CollectionBrowser TItem="PendingInspectionCard" Items="PendingInspections" Columns="InspectionColumns" Context="inspectionRows">
+            @foreach(var inspection in inspectionRows){<div class="delivery-card"><h3>@inspection.OrderNumber · @(inspection.Result=="CANCELLED"?"Cancelación después de salida":"Rechazo")</h3><p>Tarifa registrada: Bs @inspection.CancellationFeeAmount.ToString("0.00") · Pagado: Bs @inspection.PaidAmount.ToString("0.00") · Saldo: Bs @inspection.BalanceDue.ToString("0.00")</p><label>Observación de inspección</label><InputText class="form-control" @bind-Value="inspection.Notes"/>
                 @if(inspection.PaidAmount>0){<label>Resolver el importe neto de tarifa</label><InputSelect class="form-select" @bind-Value="inspection.PaymentResolution"><option value="REFUND">Devolución</option><option value="CREDIT">Crédito para otra compra</option></InputSelect><label>Referencia de devolución / autorización</label><InputText class="form-control" @bind-Value="inspection.RefundReference"/>}
                 <div class="table-scroll"><table><thead><tr><th>Lote</th><th>Devueltas</th><th>Aptas para stock</th><th>Dañadas</th></tr></thead><tbody>@foreach(var lot in inspection.Lots){<tr><td>@lot.LotCode</td><td>@lot.PickedUnits</td><td><InputNumber class="form-control" min="0" max="@lot.PickedUnits" @bind-Value="lot.GoodUnits"/></td><td>@(lot.PickedUnits-lot.GoodUnits)</td></tr>}</tbody></table></div>
                 <button class="button primary" @onclick="()=>SaveInspection(inspection)">Guardar inspección</button>
             </div>}
+            </CollectionBrowser>
         }
     </section>
 }
@@ -41,15 +65,53 @@
 @if(Error is not null){<div class="alert error">@Error</div>}
 @if(Notice is not null){<div class="alert success">@Notice</div>}
 @code {
-    private CreateDispatchRequest Form {get;set;}=new(); private string DriverIdText="";
-    private List<OrderResponse> AllOrders=[]; private List<Guid> SelectedOrderIds=[]; private List<AssignedDeliveryResponse> AssignedDeliveries=[];
-    private string? Error,Notice; private List<PendingInspectionCard> PendingInspections=[];
-    private IEnumerable<OrderResponse> ReadyOrders=>AllOrders.Where(x=>x.Fulfillment=="DELIVERY" && x.Status=="PREPARED")
-        .OrderByDescending(x=>x.IsNightOrder).ThenBy(x=>x.ScheduledDeliveryDate ?? DateOnly.MaxValue).ThenBy(x=>x.OrderNumber);
-    protected override async Task OnInitializedAsync(){if(!Session.IsSignedIn){Navigation.NavigateTo("/login");return;}if(!Session.CanAccessPage("dispatches")){Navigation.NavigateTo("/forbidden");return;}await Load();}
-    private async Task Load(){if(Session.HasPermission("dispatches.create")){var r=await Api.SendAsync<List<OrderResponse>>(HttpMethod.Get,"api/orders");if(r.IsSuccess)AllOrders=r.Value??[];else Error=r.Error;}if(Session.HasPermission("dispatches.read")){var a=await Api.SendAsync<List<AssignedDeliveryResponse>>(HttpMethod.Get,"api/dispatches/assigned");if(a.IsSuccess)AssignedDeliveries=a.Value??[];else Error=a.Error;}if(Session.HasPermission("dispatches.inspect")){var p=await Api.SendAsync<List<PendingInspectionResponse>>(HttpMethod.Get,"api/dispatches/pending-inspections");if(p.IsSuccess)PendingInspections=(p.Value??[]).Select(x=>new PendingInspectionCard(x)).ToList();else Error=p.Error;}}
+    private IReadOnlyList<CollectionColumn<OrderResponse>> QueueColumns =>
+    [
+        new("number", "Número de pedido", x => x.OrderNumber, x => x.OrderNumber),
+        new("customer", "Cliente", x => CustomerName(x.CustomerId), x => CustomerName(x.CustomerId)),
+        new("status", "Estado", x => OrderStatusName(x.Status), x => OrderStatusName(x.Status)),
+        new("fulfillment", "Entrega", x => DispatchFulfillment(x.Fulfillment), x => DispatchFulfillment(x.Fulfillment)),
+        new("total", "Total", x => x.TotalAmount.ToString("0.00"), x => x.TotalAmount),
+        new("balance", "Saldo", x => x.BalanceDue.ToString("0.00"), x => x.BalanceDue)
+    ];
+    private static readonly CollectionColumn<AssignedDeliveryResponse>[] AssignedColumns =
+    [
+        new("order", "Pedido", x => x.OrderNumber, x => x.OrderNumber),
+        new("dispatch", "Salida", x => x.DispatchNumber, x => x.DispatchNumber),
+        new("vehicle", "Vehículo", x => x.VehicleIdentifier, x => x.VehicleIdentifier),
+        new("customer", "Cliente", x => x.CustomerName, x => x.CustomerName),
+        new("address", "Dirección", x => x.DeliveryAddress, x => x.DeliveryAddress),
+        new("date", "Fecha de salida", x => x.DepartedAtUtc.ToLocalTime().ToString("yyyy-MM-dd HH:mm"), x => x.DepartedAtUtc)
+    ];
+    private static readonly CollectionColumn<PendingInspectionCard>[] InspectionColumns =
+    [
+        new("order", "Pedido", x => x.OrderNumber, x => x.OrderNumber),
+        new("result", "Resultado", x => x.Result, x => x.Result),
+        new("fee", "Tarifa", x => x.CancellationFeeAmount.ToString("0.00"), x => x.CancellationFeeAmount),
+        new("balance", "Saldo", x => x.BalanceDue.ToString("0.00"), x => x.BalanceDue)
+    ];
+    private CreateDispatchRequest Form {get;set;}=new(); private string DriverSearch=""; private List<DispatchDriverResponse> DriverChoices=[]; private DispatchDriverResponse? SelectedDriver;
+    private List<OrderResponse> AllOrders=[]; private List<CustomerResponse> CustomerRows=[]; private List<Guid> SelectedOrderIds=[]; private List<AssignedDeliveryResponse> AssignedDeliveries=[];
+    private string? Error,Notice; private List<PendingInspectionCard> PendingInspections=[]; private string SelectedTab="preparation";
+    private IReadOnlyList<OrderResponse> ReadyOrders=>AllOrders.Where(x=>x.Fulfillment=="DELIVERY" && x.Status=="PREPARED")
+        .OrderByDescending(x=>x.IsNightOrder).ThenBy(x=>x.ScheduledDeliveryDate ?? DateOnly.MaxValue).ThenBy(x=>x.OrderNumber).ToList();
+    private IReadOnlyList<OrderResponse> SelectedOrders=>ReadyOrders.Where(x=>SelectedOrderIds.Contains(x.Id)).ToList();
+    private IReadOnlyList<OrderResponse> QueueOrders=>AllOrders.Where(x=>x.Status is "PENDING_CONFIRMATION" or "REGISTERED" or "PREPARED")
+        .OrderBy(x=>x.Status=="PENDING_CONFIRMATION"?0:x.Status=="REGISTERED"?1:2).ThenByDescending(x=>x.IsNightOrder).ThenBy(x=>x.ScheduledDeliveryDate??DateOnly.MaxValue).ThenBy(x=>x.OrderNumber).ToList();
+    protected override async Task OnInitializedAsync(){if(!Session.IsSignedIn){Navigation.NavigateTo("/login");return;}if(!Session.CanAccessPage("dispatches")){Navigation.NavigateTo("/forbidden");return;}if(!Session.HasPermission("dispatches.create")&&!Session.HasPermission("orders.prepare"))SelectedTab=Session.HasPermission("dispatches.read")?"deliveries":"returns";if(Session.HasPermission("customers.read")){var c=await Api.SendAsync<List<CustomerResponse>>(HttpMethod.Get,"api/customers");if(c.IsSuccess)CustomerRows=c.Value??[];}await Load();}
+    private void SelectTab(string tab)=>SelectedTab=tab;
+    private async Task Load(){if(Session.HasPermission("orders.read")){var r=await Api.SendAsync<List<OrderResponse>>(HttpMethod.Get,"api/orders");if(r.IsSuccess)AllOrders=r.Value??[];else Error=r.Error;}if(Session.HasPermission("dispatches.read")){var a=await Api.SendAsync<List<AssignedDeliveryResponse>>(HttpMethod.Get,"api/dispatches/assigned");if(a.IsSuccess)AssignedDeliveries=a.Value??[];else Error=a.Error;}if(Session.HasPermission("dispatches.inspect")){var p=await Api.SendAsync<List<PendingInspectionResponse>>(HttpMethod.Get,"api/dispatches/pending-inspections");if(p.IsSuccess)PendingInspections=(p.Value??[]).Select(x=>new PendingInspectionCard(x)).ToList();else Error=p.Error;}}
     private void Toggle(Guid id,bool selected){if(selected&&!SelectedOrderIds.Contains(id))SelectedOrderIds.Add(id);else SelectedOrderIds.Remove(id);}
-    private async Task Create(){if(!Guid.TryParse(DriverIdText,out var driver)){Error="Escribe un UUID válido para el chofer.";return;}var request=new CreateDispatchRequest{VehicleIdentifier=Form.VehicleIdentifier,DriverStaffId=driver,OrderIds=SelectedOrderIds};var r=await Api.SendAsync<DispatchResponse>(HttpMethod.Post,"api/dispatches",request);if(!r.IsSuccess){Error=r.Error;return;}Notice=$"Salida {r.Value?.DispatchNumber} registrada; unidades descontadas del stock.";Error=null;SelectedOrderIds.Clear();await Load();}
+    private async Task SearchDrivers(){if(string.IsNullOrWhiteSpace(DriverSearch)){DriverChoices=[];SelectedDriver=null;return;}var q=Uri.EscapeDataString(DriverSearch.Trim());var r=await Api.SendAsync<List<DispatchDriverResponse>>(HttpMethod.Get,$"api/dispatches/drivers?query={q}");if(r.IsSuccess)DriverChoices=r.Value??[];else Error=r.Error;}
+    private void SelectDriver(DispatchDriverResponse driver){SelectedDriver=driver;DriverSearch=driver.FullName;DriverChoices=[];Error=null;}
+    private void ClearDriver(){SelectedDriver=null;DriverSearch="";DriverChoices=[];}
+    private async Task SelectForDispatch(OrderResponse order){if(!SelectedOrderIds.Contains(order.Id))SelectedOrderIds.Add(order.Id);await Task.Yield();}
+    private async Task Create(){if(SelectedDriver is null){Error="Selecciona un repartidor de la lista de coincidencias.";return;}var request=new CreateDispatchRequest{VehicleIdentifier=Form.VehicleIdentifier,DriverStaffId=SelectedDriver.Id,OrderIds=SelectedOrderIds};var r=await Api.SendAsync<DispatchResponse>(HttpMethod.Post,"api/dispatches",request);if(!r.IsSuccess){Error=r.Error;return;}Notice=$"Salida {r.Value?.DispatchNumber} registrada; unidades descontadas del stock.";Error=null;SelectedOrderIds.Clear();ClearDriver();await Load();}
+    private async Task MarkPrepared(OrderResponse order){var r=await Api.SendAsync<object>(HttpMethod.Put,$"api/orders/{order.Id}/prepare");if(!r.IsSuccess){Error=r.Error switch{"payment_required_for_fulfillment"=>"Registra el pago requerido por el tipo de cliente antes de preparar la salida.",_=>r.Error};return;}Notice=$"Pedido {order.OrderNumber} marcado como preparado.";Error=null;await Load();}
+    private string CustomerName(Guid id)=>CustomerRows.FirstOrDefault(x=>x.Id==id)?.FullName??"Cliente";
+    private static string DispatchFulfillment(string fulfillment)=>fulfillment switch{"DELIVERY"=>"Entrega a domicilio","PICKUP_NOW"=>"Retiro inmediato",_=>"Retiro posterior"};
+    private static string OrderStatusName(string status)=>status switch{"PENDING_CONFIRMATION"=>"Confirmar stock","REGISTERED"=>"En preparación","PREPARED"=>"Listo para salida",_=>status};
+    private static string OrderStatusCss(string status)=>status switch{"PREPARED"=>"paid","PENDING_CONFIRMATION"=>"partial",_=>"unpaid"};
     private async Task SaveInspection(PendingInspectionCard inspection){if(string.IsNullOrWhiteSpace(inspection.Notes)||inspection.Lots.Any(x=>x.GoodUnits<0||x.GoodUnits>x.PickedUnits)||inspection.PaidAmount>0&&string.IsNullOrWhiteSpace(inspection.RefundReference)){Error="Registra la observación, cantidades aptas y la referencia de la resolución del pago.";return;}var request=new InspectRejectedDeliveryRequest{Notes=inspection.Notes,PaymentResolution=inspection.PaidAmount>0?inspection.PaymentResolution:"NONE",RefundReference=inspection.RefundReference,Lots=inspection.Lots.Select(x=>new InspectedLotRequest{LotId=x.LotId,GoodUnits=x.GoodUnits,DamagedUnits=x.PickedUnits-x.GoodUnits}).ToList()};var r=await Api.SendAsync<object>(HttpMethod.Post,$"api/dispatches/orders/{inspection.DispatchOrderId}/inspection",request);if(!r.IsSuccess){Error=r.Error;return;}Notice="Inspección registrada; solo unidades aptas volvieron al stock y el pedido quedó cerrado.";Error=null;await Load();}
     private sealed class PendingInspectionCard(PendingInspectionResponse response){public Guid DispatchOrderId=response.DispatchOrderId;public string OrderNumber=response.OrderNumber;public string Result=response.Result;public decimal CancellationFeeAmount=response.CancellationFeeAmount;public decimal PaidAmount=response.PaidAmount;public decimal BalanceDue=response.BalanceDue;public string PaymentResolution="REFUND";public string RefundReference="";public string Notes="";public List<PendingLotCard> Lots=response.Lots.Select(x=>new PendingLotCard(x)).ToList();}
     private sealed class PendingLotCard(PendingInspectionLotResponse response){public Guid LotId=response.LotId;public string LotCode=response.LotCode;public int PickedUnits=response.PickedUnits;public int GoodUnits;}

@@ -44,6 +44,21 @@ public sealed class ProductsController(IProductService products) : ControllerBas
     }
 
     [Authorize(Policy = PermissionPolicies.ProductsWrite)]
+    [HttpPost("bulk")]
+    [ProducesResponseType<IReadOnlyList<ProductResponse>>(StatusCodes.Status201Created)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status409Conflict)]
+    public async Task<IActionResult> CreateMany(CreateProductsRequest request, CancellationToken cancellationToken)
+    {
+        var result = await products.CreateManyAsync(request, cancellationToken);
+        if (!result.Succeeded)
+            return result.ErrorCode == "product_barcode_already_exists"
+                ? Conflict(new { code = result.ErrorCode })
+                : BadRequest(new { code = result.ErrorCode });
+        return StatusCode(StatusCodes.Status201Created, result.Value);
+    }
+
+    [Authorize(Policy = PermissionPolicies.ProductsWrite)]
     [HttpPut("{id:guid}")]
     [ProducesResponseType<ProductResponse>(StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]

@@ -180,9 +180,6 @@ public sealed class DispatchRepository(SoraDbContext db) : IDispatchRepository
                     $"Salida de ruta {dispatch.DispatchNumber}", order.Id, assignment.Id));
             }
             order.SetStatus("DISPATCHED");
-            var customer = await db.Customers.SingleAsync(x => x.Id == order.CustomerId, cancellationToken);
-            db.NotificationOutbox.Add(new NotificationOutboxEntry(order.Id, customer.Id, "OUT_FOR_DELIVERY",
-                customer.Phone, $"El pedido {order.OrderNumber} salió a reparto.", now));
             AddOrderHistory(order.Id, leadId, "order.dispatched", new
             {
                 dispatch.DispatchNumber,
@@ -231,9 +228,6 @@ public sealed class DispatchRepository(SoraDbContext db) : IDispatchRepository
         if (result == "DELIVERED")
         {
             order.SetStatus("DELIVERED");
-            var customer = await db.Customers.SingleAsync(x => x.Id == order.CustomerId, cancellationToken);
-            db.NotificationOutbox.Add(new NotificationOutboxEntry(order.Id, customer.Id, "DELIVERY_COMPLETED",
-                customer.Phone, $"El pedido {order.OrderNumber} fue entregado.", now));
             AddOrderHistory(order.Id, actorId, "delivery.completed", new
             {
                 assignment.Id,
@@ -257,9 +251,6 @@ public sealed class DispatchRepository(SoraDbContext db) : IDispatchRepository
                     "Cliente no encontrado; unidades apartadas para un segundo intento", assignment.OrderId, assignment.Id));
             }
             order.SetStatus("PREPARED");
-            var customer = await db.Customers.SingleAsync(x => x.Id == order.CustomerId, cancellationToken);
-            db.NotificationOutbox.Add(new NotificationOutboxEntry(order.Id, customer.Id, "DELIVERY_RESCHEDULED",
-                customer.Phone, $"No encontramos a nadie para recibir el pedido {order.OrderNumber}. Coordinaremos una nueva entrega.", now));
             AddOrderHistory(order.Id, actorId, "delivery.not_found", new
             {
                 assignment.Id,

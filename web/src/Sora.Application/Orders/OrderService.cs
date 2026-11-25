@@ -132,6 +132,7 @@ public sealed class OrderService(IOrderRepository repository, TimeProvider clock
         OrderTransitionCode.Applied => ServiceResult<bool>.Success(true),
         OrderTransitionCode.NotFound => ServiceResult<bool>.Failure("order_not_found"),
         OrderTransitionCode.PaymentResolutionRequired => ServiceResult<bool>.Failure("payment_resolution_required"),
+        OrderTransitionCode.PaymentRequired => ServiceResult<bool>.Failure("payment_required_for_pickup"),
         _ => ServiceResult<bool>.Failure("order_transition_not_allowed")
     });
 

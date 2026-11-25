@@ -1,38 +1,66 @@
-﻿@inject ApiSession Session
-<div class="top-row ps-3 navbar navbar-dark">
-    <div class="container-fluid">
-        <a class="navbar-brand" href="">Sora</a>
-        <button title="Navigation menu" class="navbar-toggler" @onclick="ToggleNavMenu">
-            <span class="navbar-toggler-icon"></span>
-        </button>
+@inject ApiSession Session
+@implements IDisposable
+<div class="nav-brand">
+    <span class="nav-brand-mark">S</span>
+    <div><strong>Sora</strong><small>Espacio de trabajo</small></div>
+</div>
+<div class="nav-profile">
+    <span class="nav-profile-label">PERFIL ACTIVO</span>
+    <strong>@Session.WorkspaceLabel</strong>
+</div>
+<nav class="workspace-nav" aria-label="Navegación principal">
+    <span class="nav-section-label">ESPACIO</span>
+    <NavLink class="workspace-nav-link" href="" Match="NavLinkMatch.All"><span class="nav-icon">⌂</span>Resumen</NavLink>
+    <NavLink class="workspace-nav-link" href="preferences"><span class="nav-icon">⚙</span>Preferencias</NavLink>
+
+    @if (Session.WorkspaceProfile == "admin")
+    {
+        <span class="nav-section-label">GESTIÓN</span>
+        @if (Session.CanAccessPage("staff")) { <NavLink class="workspace-nav-link" href="staff"><span class="nav-icon">♙</span>Personal y roles</NavLink> }
+        @if (Session.CanAccessPage("customers")) { <NavLink class="workspace-nav-link" href="customers"><span class="nav-icon">◎</span>Clientes</NavLink> }
+        @if (Session.CanAccessPage("products")) { <NavLink class="workspace-nav-link" href="products"><span class="nav-icon">▦</span>Productos</NavLink> }
+        @if (Session.CanAccessPage("suppliers")) { <NavLink class="workspace-nav-link" href="suppliers"><span class="nav-icon">⇄</span>Proveedores</NavLink> }
+        @if (Session.CanAccessPage("inventory")) { <NavLink class="workspace-nav-link" href="inventory"><span class="nav-icon">▤</span>Inventario</NavLink> }
+        @if (Session.CanAccessPage("orders")) { <NavLink class="workspace-nav-link" href="orders"><span class="nav-icon">▣</span>Pedidos</NavLink> }
+        @if (Session.CanAccessPage("dispatches")) { <NavLink class="workspace-nav-link" href="dispatches"><span class="nav-icon">➜</span>Despachos</NavLink> }
+    }
+    else if (Session.WorkspaceProfile == "seller")
+    {
+        <span class="nav-section-label">VENTAS</span>
+        @if (Session.CanAccessPage("orders")) { <NavLink class="workspace-nav-link" href="orders"><span class="nav-icon">▣</span>Pedidos</NavLink> }
+        @if (Session.CanAccessPage("customers")) { <NavLink class="workspace-nav-link" href="customers"><span class="nav-icon">◎</span>Clientes</NavLink> }
+        @if (Session.CanAccessPage("products")) { <NavLink class="workspace-nav-link" href="products"><span class="nav-icon">▦</span>Catálogo</NavLink> }
+    }
+    else if (Session.WorkspaceProfile == "warehouse")
+    {
+        <span class="nav-section-label">ALMACÉN</span>
+        @if (Session.CanAccessPage("inventory")) { <NavLink class="workspace-nav-link" href="inventory"><span class="nav-icon">▤</span>Inventario</NavLink> }
+        @if (Session.CanAccessPage("orders")) { <NavLink class="workspace-nav-link" href="orders"><span class="nav-icon">▣</span>Preparación y pedidos</NavLink> }
+        @if (Session.CanAccessPage("products")) { <NavLink class="workspace-nav-link" href="products"><span class="nav-icon">▦</span>Productos</NavLink> }
+        @if (Session.CanAccessPage("suppliers")) { <NavLink class="workspace-nav-link" href="suppliers"><span class="nav-icon">⇄</span>Proveedores</NavLink> }
+        @if (Session.CanAccessPage("dispatches")) { <NavLink class="workspace-nav-link" href="dispatches"><span class="nav-icon">➜</span>Despachos</NavLink> }
+    }
+    else if (Session.WorkspaceProfile == "dispatch-lead")
+    {
+        <span class="nav-section-label">DESPACHO</span>
+        @if (Session.CanAccessPage("dispatches")) { <NavLink class="workspace-nav-link" href="dispatches"><span class="nav-icon">➜</span>Centro de despachos</NavLink> }
+        @if (Session.CanAccessPage("orders")) { <NavLink class="workspace-nav-link" href="orders"><span class="nav-icon">▣</span>Pedidos</NavLink> }
+        @if (Session.CanAccessPage("inventory")) { <NavLink class="workspace-nav-link" href="inventory"><span class="nav-icon">▤</span>Inventario</NavLink> }
+        @if (Session.CanAccessPage("customers")) { <NavLink class="workspace-nav-link" href="customers"><span class="nav-icon">◎</span>Clientes</NavLink> }
+    }
+    else
+    {
+        <span class="nav-section-label">ENTREGAS</span>
+        @if (Session.CanAccessPage("dispatches")) { <NavLink class="workspace-nav-link" href="dispatches"><span class="nav-icon">➜</span>Mis entregas</NavLink> }
+    }
+    <div class="nav-bottom">
+        <span class="nav-status"><i></i> Sesión activa</span>
+        <NavLink class="workspace-nav-link logout-link" href="login"><span class="nav-icon">↪</span>Cerrar sesión</NavLink>
     </div>
-</div>
-<div class="@NavMenuCssClass nav-scrollable" @onclick="ToggleNavMenu">
-    <nav class="nav flex-column">
-        <div class="nav-item px-3">
-            <NavLink class="nav-link" href="" Match="NavLinkMatch.All">
-                <span aria-hidden="true">⌂</span> Inicio
-            </NavLink>
-        </div>
-        @if(Session.CanAccessPage("customers")){<div class="nav-item px-3"><NavLink class="nav-link" href="customers">Clientes</NavLink></div>}
-        @if(Session.CanAccessPage("products")){<div class="nav-item px-3"><NavLink class="nav-link" href="products">Productos</NavLink></div>}
-        @if(Session.CanAccessPage("suppliers")){<div class="nav-item px-3"><NavLink class="nav-link" href="suppliers">Proveedores</NavLink></div>}
-        @if(Session.CanAccessPage("inventory")){<div class="nav-item px-3"><NavLink class="nav-link" href="inventory">Inventario</NavLink></div>}
-        @if(Session.CanAccessPage("orders")){<div class="nav-item px-3"><NavLink class="nav-link" href="orders">Pedidos</NavLink></div>}
-        @if(Session.CanAccessPage("dispatches")){<div class="nav-item px-3"><NavLink class="nav-link" href="dispatches">Despachos</NavLink></div>}
-        @if(Session.CanAccessPage("notifications")){<div class="nav-item px-3"><NavLink class="nav-link" href="notifications">Avisos simulados</NavLink></div>}
-        @if(Session.CanAccessPage("staff")){<div class="nav-item px-3"><NavLink class="nav-link" href="staff">Personal y roles</NavLink></div>}
-        <div class="nav-item px-3"><NavLink class="nav-link" href="login">Cerrar sesión</NavLink></div>
-    </nav>
-</div>
+</nav>
 
 @code {
-    private bool collapseNavMenu = true;
-
-    private string? NavMenuCssClass => collapseNavMenu ? "collapse" : null;
-
-    private void ToggleNavMenu()
-    {
-        collapseNavMenu = !collapseNavMenu;
-    }
+    protected override void OnInitialized() => Session.Changed += OnSessionChanged;
+    private void OnSessionChanged() => _ = InvokeAsync(StateHasChanged);
+    public void Dispose() => Session.Changed -= OnSessionChanged;
 }

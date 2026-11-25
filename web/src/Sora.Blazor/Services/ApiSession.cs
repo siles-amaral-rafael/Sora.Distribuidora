@@ -5,11 +5,37 @@ namespace Sora.Blazor.Services;
 
 public sealed class ApiSession
 {
+    public event Action? Changed;
     public string? AccessToken { get; private set; }
     public string? UserName { get; private set; }
     public bool IsSignedIn => !string.IsNullOrWhiteSpace(AccessToken);
-    public void SignIn(string token, string userName) { AccessToken = token; UserName = userName; }
-    public void SignOut() { AccessToken = null; UserName = null; }
+    public string PreferenceUserKey => ReadClaimValues("sub").FirstOrDefault() ?? "unknown-user";
+    public string WorkspaceProfile
+    {
+        get
+        {
+            if (HasAnyRole("ADMIN")) return "admin";
+            if (HasAnyRole("DISPATCH_LEAD")) return "dispatch-lead";
+            if (HasAnyRole("WAREHOUSE")) return "warehouse";
+            if (HasAnyRole("SELLER")) return "seller";
+            if (HasAnyRole("DISPATCH_ASSISTANT")) return "dispatch-assistant";
+            if (HasAnyRole("DRIVER")) return "driver";
+            return "staff";
+        }
+    }
+
+    public string WorkspaceLabel => WorkspaceProfile switch
+    {
+        "admin" => "Administración",
+        "seller" => "Ventas",
+        "warehouse" => "Almacén",
+        "dispatch-lead" => "Jefatura de despacho",
+        "dispatch-assistant" => "Ayudante de despacho",
+        "driver" => "Reparto",
+        _ => "Personal"
+    };
+    public void SignIn(string token, string userName) { AccessToken = token; UserName = userName; Changed?.Invoke(); }
+    public void SignOut() { AccessToken = null; UserName = null; Changed?.Invoke(); }
 
     public bool CanAccessPage(string page) => page switch
     {
@@ -19,8 +45,7 @@ public sealed class ApiSession
         "suppliers" => HasPermission("suppliers.read"),
         "inventory" => HasPermission("inventory.read"),
         "orders" => HasPermission("orders.read"),
-        "dispatches" => HasPermission("dispatches.read"),
-        "notifications" => HasPermission("notifications.manage"),
+        "dispatches" => HasPermission("dispatches.read") || HasPermission("orders.prepare"),
         _ => HasPermission("staff.manage")
     };
 

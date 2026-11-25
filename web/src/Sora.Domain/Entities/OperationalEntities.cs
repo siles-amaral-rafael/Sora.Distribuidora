@@ -270,6 +270,7 @@ public sealed class Supplier
     public string Name { get; private set; } = string.Empty;
     public string Phone { get; private set; } = string.Empty;
     public bool IsActive { get; private set; }
+    public ICollection<SupplierProduct> ProductLinks { get; } = new List<SupplierProduct>();
 
     public void Update(string name, string phone)
     {
@@ -279,6 +280,20 @@ public sealed class Supplier
 
     public void Deactivate() => IsActive = false;
     public void Activate() => IsActive = true;
+}
+
+public sealed class SupplierProduct
+{
+    private SupplierProduct() { }
+    public SupplierProduct(Guid supplierId, Guid productId)
+    {
+        SupplierId = supplierId;
+        ProductId = productId;
+    }
+    public Guid SupplierId { get; private set; }
+    public Guid ProductId { get; private set; }
+    public Supplier Supplier { get; private set; } = null!;
+    public Product Product { get; private set; } = null!;
 }
 
 public sealed class PurchaseReceipt
@@ -509,53 +524,6 @@ public sealed class OrderCancellationResolution
     public DateTimeOffset ResolvedAtUtc { get; private set; }
     public SalesOrder Order { get; private set; } = null!;
     public StaffAccount Actor { get; private set; } = null!;
-}
-
-public sealed class NotificationOutboxEntry
-{
-    private NotificationOutboxEntry() { }
-    public NotificationOutboxEntry(Guid orderId, Guid customerId, string eventType, string recipientPhone,
-        string message, DateTimeOffset createdAtUtc)
-    {
-        Id = Guid.NewGuid(); OrderId = orderId; CustomerId = customerId; EventType = eventType;
-        RecipientPhone = recipientPhone; Message = message; State = "PENDING"; CreatedAtUtc = createdAtUtc;
-    }
-    public Guid Id { get; private set; }
-    public Guid OrderId { get; private set; }
-    public Guid CustomerId { get; private set; }
-    public string EventType { get; private set; } = string.Empty;
-    public string RecipientPhone { get; private set; } = string.Empty;
-    public string Message { get; private set; } = string.Empty;
-    public string State { get; private set; } = string.Empty;
-    public string Mode { get; private set; } = "SIMULATED";
-    public string? LastError { get; private set; }
-    public int Attempts { get; private set; }
-    public int RetryCount { get; private set; }
-    public DateTimeOffset CreatedAtUtc { get; private set; }
-    public DateTimeOffset? ProcessedAtUtc { get; private set; }
-    public DateTimeOffset? LastRetryAtUtc { get; private set; }
-    public Guid? ProcessedById { get; private set; }
-    public Guid? LastRetryById { get; private set; }
-    public SalesOrder Order { get; private set; } = null!;
-    public Customer Customer { get; private set; } = null!;
-    public StaffAccount? ProcessedBy { get; private set; }
-    public void MarkSimulated(Guid actorId, DateTimeOffset now)
-    {
-        State = "SIMULATED_SENT"; Mode = "LOCAL_ONLY"; LastError = null;
-        Attempts++; ProcessedAtUtc = now; ProcessedById = actorId;
-    }
-    public void MarkSimulatedFailure(Guid actorId, DateTimeOffset now, string reason)
-    {
-        State = "FAILED"; Mode = "LOCAL_ONLY"; LastError = reason;
-        Attempts++; ProcessedAtUtc = now; ProcessedById = actorId;
-    }
-    public bool RequeueForRetry(Guid actorId, DateTimeOffset now)
-    {
-        if (State != "FAILED") return false;
-        State = "PENDING"; ProcessedAtUtc = null; ProcessedById = null;
-        RetryCount++; LastRetryAtUtc = now; LastRetryById = actorId;
-        return true;
-    }
 }
 
 public sealed class OrderLine

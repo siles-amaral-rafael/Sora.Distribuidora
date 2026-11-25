@@ -1,0 +1,76 @@
+@page "/preferences"
+@inject ApiSession Session
+@inject UiPreferencesService UiPreferences
+@inject NavigationManager Navigation
+
+<PageTitle>Preferencias de apariencia | Sora</PageTitle>
+<header class="page-heading"><div><span class="eyebrow">PERSONALIZACIÓN</span><h1>Apariencia y lectura</h1><p>Ajusta cómo ves Sora en este dispositivo.</p></div></header>
+@if (Ready)
+{
+    <div class="preferences-layout">
+        <section class="panel preferences-panel" aria-labelledby="theme-title">
+            <div class="preference-section-heading"><span class="preference-icon">◐</span><div><h2 id="theme-title">Tema de color</h2><p class="muted">Elige el aspecto que te resulte más cómodo.</p></div></div>
+            <fieldset class="preference-options">
+                <legend>Entorno</legend>
+                <label class="preference-choice"><input type="radio" name="theme" value="light" checked="@(Form.Theme == "light")" @onchange="SetLightTheme" /><span><strong>Claro</strong><small>Fondo claro y texto oscuro.</small></span><span class="theme-preview preview-light" aria-hidden="true"></span></label>
+                <label class="preference-choice"><input type="radio" name="theme" value="dark" checked="@(Form.Theme == "dark")" @onchange="SetDarkTheme" /><span><strong>Oscuro</strong><small>Fondo oscuro y texto claro.</small></span><span class="theme-preview preview-dark" aria-hidden="true"></span></label>
+                <label class="preference-choice"><input type="radio" name="theme" value="system" checked="@(Form.Theme == "system")" @onchange="SetSystemTheme" /><span><strong>Según el dispositivo</strong><small>Usa el tema configurado en el sistema operativo.</small></span><span class="theme-preview preview-system" aria-hidden="true"></span></label>
+            </fieldset>
+        </section>
+
+        <section class="panel preferences-panel" aria-labelledby="text-title">
+            <div class="preference-section-heading"><span class="preference-icon">Aa</span><div><h2 id="text-title">Tamaño del texto</h2><p class="muted">Aumenta el texto sin cambiar el contenido guardado.</p></div></div>
+            <label class="preference-label" for="font-scale">Tamaño</label>
+            <select id="font-scale" class="form-select preference-select" @bind="Form.FontScale">
+                <option value="100">Normal · 100%</option>
+                <option value="112">Un poco más grande · 112%</option>
+                <option value="125">Grande · 125%</option>
+                <option value="150">Muy grande · 150%</option>
+                <option value="200">Máximo · 200%</option>
+            </select>
+            <p class="text-preview">Vista previa: Sora organiza pedidos, inventario y entregas.</p>
+        </section>
+
+        <section class="panel preferences-panel" aria-labelledby="contrast-title">
+            <div class="preference-section-heading"><span class="preference-icon">◑</span><div><h2 id="contrast-title">Contraste</h2><p class="muted">Refuerza bordes y separación entre elementos.</p></div></div>
+            <label class="contrast-toggle"><input type="checkbox" @bind="Form.HighContrast" /><span><strong>Contraste alto</strong><small>Marca con mayor claridad los controles y límites de los paneles.</small></span></label>
+        </section>
+
+        <section class="preferences-actions">
+            <div><strong>Preferencias de esta cuenta</strong><p>Se guardan en este navegador y se aplican cuando vuelves a iniciar sesión.</p></div>
+            <div class="actions"><button type="button" class="button secondary" @onclick="Reset">Restablecer</button><button type="button" class="button primary" @onclick="Save">Guardar preferencias</button></div>
+        </section>
+        @if (Notice is not null) { <div class="alert success">@Notice</div> }
+        <p class="accessibility-note">Diseño guiado por WCAG 2.2 AA: ampliación de texto, contraste y foco visible. La aplicación no declara certificación formal de conformidad.</p>
+    </div>
+}
+
+@code {
+    private UiPreferences Form = new();
+    private bool Ready;
+    private string? Notice;
+    private void SetLightTheme() => Form.Theme = "light";
+    private void SetDarkTheme() => Form.Theme = "dark";
+    private void SetSystemTheme() => Form.Theme = "system";
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (!Session.IsSignedIn) { Navigation.NavigateTo("/login"); return; }
+        await UiPreferences.LoadAsync(Session.PreferenceUserKey);
+        Form = new() { Theme = UiPreferences.Current.Theme, FontScale = UiPreferences.Current.FontScale, HighContrast = UiPreferences.Current.HighContrast };
+        Ready = true;
+    }
+
+    private async Task Save()
+    {
+        await UiPreferences.SaveAsync(Session.PreferenceUserKey, Form);
+        Notice = "Preferencias guardadas y aplicadas.";
+    }
+
+    private async Task Reset()
+    {
+        Form = new();
+        await Save();
+        Notice = "Se restablecieron las preferencias predeterminadas.";
+    }
+}

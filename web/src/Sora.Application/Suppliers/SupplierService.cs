@@ -11,6 +11,8 @@ public interface ISupplierService
     Task<SupplierResponse> CreateAsync(SaveSupplierRequest request, CancellationToken cancellationToken);
     Task<SupplierResponse?> UpdateAsync(Guid id, SaveSupplierRequest request, CancellationToken cancellationToken);
     Task<bool> DeactivateAsync(Guid id, CancellationToken cancellationToken);
+    Task<ServiceResult<SupplierResponse>> ReplaceProductsAsync(Guid id, ReplaceSupplierProductsRequest request,
+        CancellationToken cancellationToken);
 }
 
 public sealed class SupplierService(ISupplierRepository suppliers) : ISupplierService
@@ -49,5 +51,20 @@ public sealed class SupplierService(ISupplierRepository suppliers) : ISupplierSe
         return true;
     }
 
-    private static SupplierResponse ToResponse(Supplier x) => new(x.Id, x.Name, x.Phone, x.IsActive);
+    public async Task<ServiceResult<SupplierResponse>> ReplaceProductsAsync(Guid id,
+        ReplaceSupplierProductsRequest request, CancellationToken cancellationToken)
+    {
+        var ids = request.ProductIds.Distinct().ToArray();
+        if (ids.Length != request.ProductIds.Count)
+            return ServiceResult<SupplierResponse>.Failure("duplicate_supplier_product");
+        if (!await suppliers.ReplaceProductsAsync(id, ids, cancellationToken))
+            return ServiceResult<SupplierResponse>.Failure("supplier_or_product_not_found");
+        var saved = await suppliers.FindByIdAsync(id, cancellationToken);
+        return saved is null ? ServiceResult<SupplierResponse>.Failure("supplier_not_found")
+            : ServiceResult<SupplierResponse>.Success(ToResponse(saved));
+    }
+
+    private static SupplierResponse ToResponse(Supplier x) => new(x.Id, x.Name, x.Phone, x.IsActive,
+        x.ProductLinks.OrderBy(link => link.Product.Name)
+            .Select(link => new SupplierProductResponse(link.ProductId, link.Product.InternalCode, link.Product.Name)).ToList());
 }

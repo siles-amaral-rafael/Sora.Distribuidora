@@ -34,6 +34,18 @@ La solución usa `net10.0`. El SDK 10 está activo y es LTS. Como la consigna no
 
 La solución implementa autenticación de personal con JWT y BCrypt, además de clientes, catálogo, proveedores, inventario por lote, pedidos y despachos. PostgreSQL conserva lotes, reservas y movimientos; la reserva selecciona primero los lotes con vencimiento más cercano (FEFO). Las operaciones sensibles se ejecutan dentro de transacciones.
 
+## Diseño de interfaz y perfiles
+
+La interfaz adopta **Material Design 3 (Material 3)** como guía visual: jerarquía tipográfica clara, superficies y tarjetas, navegación agrupada, colores semánticos por espacio de trabajo, estados visibles, controles con foco perceptible y adaptación a pantallas estrechas. Se eligió porque permite mantener un lenguaje visual consistente en formularios y operaciones, mientras cada rol prioriza sus tareas. Es una implementación inspirada en sus principios, no una declaración de certificación de conformidad.
+
+Cada perfil presenta una portada, navegación y acento visual propios: administración, ventas, almacén, jefatura de despacho, ayudante de despacho y reparto. La lista de accesos sigue filtrada por los permisos efectivos de la sesión y las páginas/API conservan sus validaciones de autorización; el diseño no concede permisos nuevos. Si una cuenta reúne varios roles, la portada usa este orden de perfil principal: administrador, jefe de despacho, almacén, vendedor, ayudante y repartidor; sus accesos visibles continúan combinando los permisos de la cuenta.
+
+Los listados extensos de clientes, productos, proveedores, stock por lote, pedidos, despachos y administración muestran 10 filas o tarjetas por página y permiten elegir 10, 25 o 50. La paginación se realiza en la interfaz sobre los resultados devueltos por la API.
+
+La pantalla **Preferencias** permite seleccionar tema claro, oscuro o el del sistema, tamaño de texto de 100% a 200% y contraste reforzado. Las opciones se guardan en `localStorage` bajo el identificador de la cuenta (claim `sub`) y se aplican al volver a iniciar sesión en ese navegador; no se sincronizan con otros navegadores o dispositivos.
+
+La accesibilidad visual toma **WCAG 2.2 nivel AA** como objetivo de diseño: ampliación de texto, contraste, foco visible, controles etiquetados y adaptación a pantallas estrechas. La preferencia de movimiento reducido respeta el ajuste del sistema. Es un objetivo, no una certificación; hace falta una evaluación formal para afirmar conformidad.
+
 ## Módulos disponibles
 
 - **Clientes:** alta, consulta, edición y desactivación; guarda una dirección y coordenadas opcionales.
@@ -42,7 +54,6 @@ La solución implementa autenticación de personal con JWT y BCrypt, además de 
 - **Inventario:** recepción por factura, producto, lote, vencimiento y costo; consulta de saldo físico, reservado y disponible; ajustes con motivo e historial inmutable.
 - **Pedidos:** registro y edición antes de despachar, cálculo del importe según precio unitario y reserva FEFO atómica. Si falta stock, guarda el pedido como pendiente de confirmación, sin apartar unidades; el vendedor registra el acuerdo con el cliente y ajusta cantidades antes de reservar.
 - **Pagos de prueba:** registra uno o más abonos con el monto y referencia que entrega caja. Los clientes particulares pueden pagar parcialmente; tiendas e instituciones deben cubrir el total en una sola operación. Todo saldo pendiente bloquea nuevos pedidos del mismo cliente. El despacho de un particular permite saldo después del primer abono; los demás tipos deben estar pagados completamente. Esta etapa no se conecta al sistema real de caja.
-- **Avisos de prueba:** los eventos de pedido recibido, preparado, salida a reparto, reprogramación y entrega se guardan de forma transaccional en una cola PostgreSQL y usan el teléfono de la ficha del cliente. Un administrador puede simular el envío. No se comunica con WhatsApp ni requiere conexión a internet; la integración real queda para el despliegue final.
 - **Beneficios por cantidad:** el administrador configura tramos por producto. El sistema usa el costo de los lotes FEFO realmente reservados y limita el descuento a un máximo del 20% del margen bruto de la venta; se bloquea el pedido si el precio no cubre el costo del lote.
 - **Acceso y auditoría:** el administrador registra cuentas, asigna uno o más roles, cambia permisos por rol y activa o desactiva cuentas. La API consulta permisos vigentes en PostgreSQL y conserva auditoría de cambios. Protege la última cuenta con permiso de administración.
 - **Despachos:** una salida puede incluir varios pedidos; registra vehículo y chofer. Captura firma dibujada para recepción o rechazo. Un cliente no encontrado puede tener un segundo intento y el rechazo devuelve las unidades al stock.
@@ -64,10 +75,12 @@ Todas las rutas de negocio requieren un JWT y una política de permisos almacena
 | `GET, POST /api/customers` | Consultar y registrar clientes |
 | `GET, PUT, DELETE /api/customers/{id}` | Consultar, editar y desactivar cliente |
 | `GET, POST /api/products` | Consultar y registrar productos |
+| `POST /api/products/bulk` | Registrar hasta 50 productos y generar automáticamente códigos internos numéricos |
 | `GET, PUT, DELETE /api/products/{id}` | Consultar, editar y desactivar producto |
 | `POST /api/products/{id}/presentations` | Registrar presentación |
 | `PUT /api/products/{id}/discount-rules` | Configurar tramos de beneficio (administrador) |
 | `GET, POST /api/suppliers` | Consultar y registrar proveedores |
+| `PUT /api/suppliers/{id}/products` | Vincular productos abastecidos por un proveedor |
 | `GET /api/inventory/stock` | Consultar saldo por lote |
 | `POST /api/inventory/receipts` | Registrar recepción y lotes |
 | `POST /api/inventory/adjustments` | Ajustar saldo con historial |
@@ -75,9 +88,8 @@ Todas las rutas de negocio requieren un JWT y una política de permisos almacena
 | `GET /api/orders/{id}`, `PUT /api/orders/{id}` | Consultar y editar un pedido antes del despacho |
 | `PUT /api/orders/{id}/availability` | Registrar la decisión sobre faltantes |
 | `PUT /api/orders/{id}/prepare`, `/pickup`, `/cancel` | Preparar, confirmar retiro o cancelar pedido |
-| `POST /api/orders/{id}/payments` | Registrar un pago/abono simulado de caja |
-| `GET /api/notifications/outbox` | Consultar la cola de avisos (administrador) |
-| `POST /api/notifications/outbox/{id}/simulate-send` | Marcar como enviado en modo simulado (administrador) |
+| `POST /api/orders/{id}/payments` | Registrar el importe y la referencia de caja; no reemplaza al sistema de caja |
+| `GET /api/dispatches/drivers?query={texto}` | Buscar repartidores por nombre, correo o identificador |
 | `POST /api/dispatches` | Crear salida con varios pedidos |
 | `POST /api/dispatches/orders/{dispatchOrderId}/result` | Registrar resultado de entrega |
 
@@ -107,7 +119,7 @@ dotnet run --project src/Sora.Api --launch-profile http
 
 Para levantar toda la solución en contenedores, usa `podman-compose up --build`. PostgreSQL se publica solo en `127.0.0.1:5433` y mantiene sus datos en el volumen `sora-postgres-data`.
 
-Las migraciones `Revision5OperationalModules` y `Revision5RejectionInspection` contienen la base operativa de la revisión 5. `PhaseFinalAccessAndOrderControls` agrega permisos configurables, auditorías, reglas de descuentos, estados de confirmación de faltantes e historial de pedidos. `PhaseFinalPaymentsAndNotifications` agrega los pagos y la cola de avisos simulados. Tras actualizar el código, ejecuta `dotnet ef database update --project src/Sora.Infrastructure --startup-project src/Sora.Api`. Cierra sesión y vuelve a entrar para que el token de interfaz recoja los permisos iniciales. Para actualizar imágenes sin reiniciar PostgreSQL usa `podman-compose up --build -d sora-api sora-blazor`; el volumen `sora-postgres-data` conserva sus datos.
+Las migraciones `Revision5OperationalModules` y `Revision5RejectionInspection` contienen la base operativa de la revisión 5. `PhaseFinalAccessAndOrderControls` agrega permisos configurables, auditorías, reglas de descuentos, estados de confirmación de faltantes e historial de pedidos. `PhaseFinalPaymentsAndNotifications` incorporó pagos y una cola temporal de avisos simulados; `UserWorkflowRefresh` agrega los vínculos proveedor-producto y elimina esa cola y su permiso. La migración descarta las filas de avisos simulados existentes. Los avisos reales por WhatsApp o Telegram quedan fuera de esta versión. Tras actualizar el código, ejecuta `dotnet ef database update --project src/Sora.Infrastructure --startup-project src/Sora.Api`. Cierra sesión y vuelve a entrar para que el token de interfaz recoja los permisos iniciales. Para actualizar imágenes sin reiniciar PostgreSQL usa `podman-compose up --build -d sora-api sora-blazor`; el volumen `sora-postgres-data` conserva sus datos.
 
 La interfaz queda disponible localmente en `http://localhost:5173` y la API en `http://localhost:5151`.
 

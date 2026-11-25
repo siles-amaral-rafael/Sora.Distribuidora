@@ -2,21 +2,68 @@
 @inject ApiClient Api
 @inject ApiSession Session
 @inject NavigationManager Navigation
+
 <PageTitle>Proveedores | Sora</PageTitle>
-<header class="page-heading"><div><span class="eyebrow">ABASTECIMIENTO</span><h1>Proveedores</h1><p>Directorio de proveedores de mercadería.</p></div></header>
-<div class="split-layout">
+<header class="page-heading"><div><span class="eyebrow">ABASTECIMIENTO</span><h1>Proveedores</h1><p>Administra proveedores y vincula los productos que abastece cada uno.</p></div>@if(Session.HasPermission("suppliers.write")){<button class="button primary" @onclick="OpenNew">+ Nuevo proveedor</button>}</header>
+<div class="directory-page">
+    <section class="panel"><div class="panel-title"><div><h2>Directorio</h2><p class="muted">La asociación de productos facilita la recepción de mercadería.</p></div><button class="button secondary" @onclick="Load">Actualizar</button></div>
+        @if(SupplierRows.Count==0){<p class="empty">Todavía no hay proveedores.</p>}
+        <CollectionBrowser TItem="SupplierResponse" Items="SupplierRows" Columns="SupplierColumns" Context="pageSuppliers">
+        @foreach(var supplier in pageSuppliers)
+        {
+            <article class="supplier-card"><div class="supplier-card-head"><div><strong>@supplier.Name</strong><small>@supplier.Phone · @(supplier.IsActive?"Activo":"Inactivo")</small></div>
+                @if(Session.HasPermission("suppliers.write")){<div class="row-actions"><button class="button secondary small" @onclick="()=>Edit(supplier)">Editar</button><button class="button secondary small" @onclick="()=>BeginProductEdit(supplier)">@(EditingProductsSupplierId==supplier.Id?"Cerrar productos":"Productos")</button>@if(supplier.IsActive){<button class="button danger-outline small" @onclick="()=>Deactivate(supplier)">Desactivar</button>}</div>}
+            </div>
+            @if(supplier.Products.Count>0){<div class="chips supplier-products">@foreach(var product in supplier.Products){<span>@product.ProductName · @product.InternalCode</span>}</div>}
+            else{<small class="muted">Sin productos asociados; podrá seleccionar cualquier producto al registrar una recepción.</small>}
+            @if(EditingProductsSupplierId==supplier.Id)
+            {
+                <div class="supplier-product-editor"><label>Buscar producto</label><InputText class="form-control" @bind-Value="ProductSearch" placeholder="Escribe código o nombre"/>
+                    <div class="supplier-product-options">@foreach(var product in FilteredProducts){<label class="check-row"><input type="checkbox" checked="@SelectedProductIds.Contains(product.Id)" @onchange="e=>ToggleProduct(product.Id,e.Value is true)"/><span><strong>@product.Name</strong><small>@product.InternalCode · @(product.Category??"Sin categoría")</small></span></label>}
+                    @if(!FilteredProducts.Any()){<p class="muted">No se encontraron productos.</p>}</div>
+                    <div class="actions"><button class="button primary" @onclick="()=>SaveProducts(supplier)">Guardar productos (@SelectedProductIds.Count)</button><button class="button secondary" @onclick="CloseProductEdit">Cancelar</button></div>
+                </div>
+        }
+        </article>
+        }
+        </CollectionBrowser>
+    </section>
     @if(Session.HasPermission("suppliers.write"))
     {
-        <section class="panel form-panel"><h2>@(EditingId is null?"Nuevo proveedor":"Editar proveedor")</h2><EditForm Model="Form" OnValidSubmit="Save"><DataAnnotationsValidator/><label>Nombre</label><InputText class="form-control" @bind-Value="Form.Name"/><label>Teléfono</label><InputText class="form-control" @bind-Value="Form.Phone"/><div class="actions"><button class="button primary">Guardar</button><button type="button" class="button secondary" @onclick="Reset">Limpiar</button></div></EditForm>@if(Error is not null){<div class="alert error">@Error</div>}</section>
+        <FormModal IsOpen="FormOpen" Title="@(EditingId is null ? "Nuevo proveedor" : "Editar proveedor")" OnClose="CloseForm">
+            <EditForm Model="Form" OnValidSubmit="Save"><DataAnnotationsValidator/>
+                <label>Nombre</label><InputText class="form-control" @bind-Value="Form.Name"/>
+                <label>Teléfono</label><InputText class="form-control" @bind-Value="Form.Phone"/>
+                @if(Error is not null){<div class="alert error">@Error</div>}
+                <div class="actions"><button class="button primary">Guardar proveedor</button><button type="button" class="button secondary" @onclick="Reset">Cancelar</button></div>
+            </EditForm>
+        </FormModal>
     }
-    <section class="panel"><div class="panel-title"><h2>Directorio</h2><button class="button secondary" @onclick="Load">Actualizar</button></div><div class="table-scroll"><table><thead><tr><th>Proveedor</th><th>Teléfono</th><th>Estado</th><th></th></tr></thead><tbody>@foreach(var s in SupplierRows){<tr><td><strong>@s.Name</strong></td><td>@s.Phone</td><td><span class="status-pill">Activo</span></td><td>@if(Session.HasPermission("suppliers.write")){<button class="link-button" @onclick="()=>Edit(s)">Editar</button><button class="link-button danger-text" @onclick="()=>Deactivate(s)">Desactivar</button>}</td></tr>}</tbody></table></div></section>
 </div>
+
 @code {
-    private List<SupplierResponse> SupplierRows=[]; private SaveSupplierRequest Form {get;set;}=new(); private Guid? EditingId; private string? Error;
+    private static readonly CollectionColumn<SupplierResponse>[] SupplierColumns =
+    [
+        new("name", "Proveedor", x => x.Name, x => x.Name),
+        new("phone", "Teléfono", x => x.Phone, x => x.Phone),
+        new("status", "Estado", x => x.IsActive ? "Activo" : "Inactivo", x => x.IsActive ? "Activo" : "Inactivo"),
+        new("products", "Productos", x => string.Join(" ", x.Products.Select(p => p.ProductName)), x => string.Join(" ", x.Products.Select(p => p.ProductName)))
+    ];
+    private List<SupplierResponse> SupplierRows=[];private List<ProductResponse> ProductRows=[];private SaveSupplierRequest Form {get;set;}=new();
+    private Guid? EditingId,EditingProductsSupplierId;private bool FormOpen;private HashSet<Guid> SelectedProductIds=[];private string ProductSearch="";private string? Error,Notice;
+    private IEnumerable<ProductResponse> FilteredProducts=>ProductRows.Where(x=>x.IsActive&&
+        (string.IsNullOrWhiteSpace(ProductSearch)||x.Name.Contains(ProductSearch,StringComparison.OrdinalIgnoreCase)||x.InternalCode.Contains(ProductSearch,StringComparison.OrdinalIgnoreCase))).OrderBy(x=>x.Name);
+
     protected override async Task OnInitializedAsync(){if(!Session.IsSignedIn){Navigation.NavigateTo("/login");return;}if(!Session.CanAccessPage("suppliers")){Navigation.NavigateTo("/forbidden");return;}await Load();}
-    private async Task Load(){var r=await Api.SendAsync<List<SupplierResponse>>(HttpMethod.Get,"api/suppliers");if(r.IsSuccess)SupplierRows=r.Value??[];else Error=r.Error;}
-    private async Task Save(){var r=await Api.SendAsync<SupplierResponse>(EditingId is null?HttpMethod.Post:HttpMethod.Put,EditingId is null?"api/suppliers":$"api/suppliers/{EditingId}",Form);if(!r.IsSuccess){Error=r.Error;return;}Reset();await Load();}
-    private void Edit(SupplierResponse s){EditingId=s.Id;Form=new(){Name=s.Name,Phone=s.Phone};}
-    private async Task Deactivate(SupplierResponse s){var r=await Api.SendAsync<object>(HttpMethod.Delete,$"api/suppliers/{s.Id}");if(r.IsSuccess)await Load();else Error=r.Error;}
-    private void Reset(){EditingId=null;Form=new();}
+    private async Task Load(){var r=await Api.SendAsync<List<SupplierResponse>>(HttpMethod.Get,"api/suppliers");if(r.IsSuccess)SupplierRows=r.Value??[];else Error=r.Error;if(Session.HasPermission("products.read")){var p=await Api.SendAsync<List<ProductResponse>>(HttpMethod.Get,"api/products");if(p.IsSuccess)ProductRows=p.Value??[];}}
+    private async Task Save(){var creating=EditingId is null;var r=await Api.SendAsync<SupplierResponse>(creating?HttpMethod.Post:HttpMethod.Put,creating?"api/suppliers":$"api/suppliers/{EditingId}",Form);if(!r.IsSuccess){Error=r.Error;Notice=null;return;}Notice=creating?"Proveedor registrado.":"Proveedor actualizado.";Error=null;Reset();await Load();}
+    private void OpenNew(){EditingId=null;Form=new();Error=null;FormOpen=true;}
+    private void Edit(SupplierResponse supplier){EditingId=supplier.Id;Form=new(){Name=supplier.Name,Phone=supplier.Phone};Error=null;FormOpen=true;}
+    private async Task Deactivate(SupplierResponse supplier){var r=await Api.SendAsync<object>(HttpMethod.Delete,$"api/suppliers/{supplier.Id}");if(r.IsSuccess){Notice="Proveedor desactivado.";await Load();}else Error=r.Error;}
+    private void BeginProductEdit(SupplierResponse supplier){EditingProductsSupplierId=supplier.Id;SelectedProductIds=supplier.Products.Select(x=>x.ProductId).ToHashSet();ProductSearch="";Error=null;}
+    private void ToggleProduct(Guid id,bool selected){if(selected)SelectedProductIds.Add(id);else SelectedProductIds.Remove(id);}
+    private async Task SaveProducts(SupplierResponse supplier){var r=await Api.SendAsync<SupplierResponse>(HttpMethod.Put,$"api/suppliers/{supplier.Id}/products",new ReplaceSupplierProductsRequest{ProductIds=SelectedProductIds.ToList()});if(!r.IsSuccess){Error=r.Error=="supplier_or_product_not_found"?"El proveedor o uno de los productos ya no está activo.":r.Error;return;}Notice=$"Productos vinculados con {supplier.Name}.";Error=null;EditingProductsSupplierId=null;await Load();}
+    private void CloseProductEdit()=>EditingProductsSupplierId=null;
+    private void Reset(){EditingId=null;Form=new();FormOpen=false;Error=null;}
+    private void CloseForm(){FormOpen=false;Error=null;}
 }

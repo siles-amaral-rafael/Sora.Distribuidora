@@ -11,4 +11,11 @@ public sealed class SaveSupplierRequest
     public string Phone { get; set; } = string.Empty;
 }
 
-public sealed record SupplierResponse(Guid Id, string Name, string Phone, bool IsActive);
+public sealed class ReplaceSupplierProductsRequest
+{
+    public List<Guid> ProductIds { get; set; } = [];
+}
+
+public sealed record SupplierProductResponse(Guid ProductId, string InternalCode, string ProductName);
+public sealed record SupplierResponse(Guid Id, string Name, string Phone, bool IsActive,
+    IReadOnlyList<SupplierProductResponse> Products);

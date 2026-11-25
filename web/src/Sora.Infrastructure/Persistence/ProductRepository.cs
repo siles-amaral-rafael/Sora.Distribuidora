@@ -29,6 +29,14 @@ public sealed class ProductRepository(SoraDbContext dbContext) : IProductReposit
         await dbContext.SaveChangesAsync(cancellationToken);
     }
 
+    public async Task AddManyAsync(IReadOnlyList<Product> products, CancellationToken cancellationToken)
+    {
+        await using var transaction = await dbContext.Database.BeginTransactionAsync(cancellationToken);
+        dbContext.Products.AddRange(products);
+        await dbContext.SaveChangesAsync(cancellationToken);
+        await transaction.CommitAsync(cancellationToken);
+    }
+
     public async Task AddPresentationAsync(ProductPresentation presentation, CancellationToken cancellationToken)
     {
         dbContext.ProductPresentations.Add(presentation);

@@ -6,7 +6,7 @@ public sealed record OrderLineInput(Guid ProductId, Guid? PresentationId, decima
 public enum CreateOrderResultCode { Created, PendingConfirmation, CustomerNotFound, ProductUnavailable, InvalidPresentation, InsufficientStock, SaleBelowCost, OutstandingBalance }
 public sealed record CreateOrderResult(CreateOrderResultCode Code, SalesOrder? Order = null);
 public enum PrepareOrderResultCode { Prepared, NotFound, InvalidState, PaymentRequired }
-public enum OrderTransitionCode { Applied, NotFound, InvalidState, SaleBelowCost, PaymentResolutionRequired }
+public enum OrderTransitionCode { Applied, NotFound, InvalidState, SaleBelowCost, PaymentResolutionRequired, PaymentRequired }
 public enum CancellationResolutionKind { NONE, REFUND, CREDIT }
 public enum OrderAvailabilityResultCode { Confirmed, Cancelled, NotFound, InvalidState, InsufficientStock, ProductUnavailable, InvalidPresentation, SaleBelowCost }
 public enum PaymentOperationCode { Recorded, NotFound, InvalidState, InvalidAmount, PaymentRequired, Overpayment, DuplicateReference }

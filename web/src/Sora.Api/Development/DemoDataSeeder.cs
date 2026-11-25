@@ -75,6 +75,22 @@ public static class DemoDataSeeder
 
         if (await db.Products.AnyAsync(x => x.InternalCode == "DEMO-ARZ-001", cancellationToken))
         {
+            var demoProducts = await db.Products.Where(x => x.InternalCode.StartsWith("DEMO-") && x.IsActive)
+                .OrderBy(x => x.InternalCode).ToListAsync(cancellationToken);
+            var demoSuppliers = await db.Suppliers.Where(x => x.Name.StartsWith("DEMO - ") && x.IsActive)
+                .OrderBy(x => x.Name).ToListAsync(cancellationToken);
+            if (demoSuppliers.Count > 0)
+            {
+                var linkedIds = await db.SupplierProducts.Select(x => new { x.SupplierId, x.ProductId })
+                    .ToListAsync(cancellationToken);
+                var linked = linkedIds.Select(x => (x.SupplierId, x.ProductId)).ToHashSet();
+                for (var i = 0; i < demoProducts.Count; i++)
+                {
+                    var supplier = demoSuppliers[i % demoSuppliers.Count];
+                    if (linked.Add((supplier.Id, demoProducts[i].Id)))
+                        db.SupplierProducts.Add(new SupplierProduct(supplier.Id, demoProducts[i].Id));
+                }
+            }
             await db.SaveChangesAsync(cancellationToken);
             return;
         }
@@ -101,6 +117,9 @@ public static class DemoDataSeeder
         db.Customers.AddRange(customers);
         db.Products.AddRange(products);
         db.Suppliers.AddRange(suppliers);
+        await db.SaveChangesAsync(cancellationToken);
+        for (var i = 0; i < products.Length; i++)
+            db.SupplierProducts.Add(new SupplierProduct(suppliers[i % suppliers.Length].Id, products[i].Id));
         await db.SaveChangesAsync(cancellationToken);
 
         var receipts = suppliers.Select((supplier, i) => new PurchaseReceipt(supplier.Id,
@@ -146,8 +165,6 @@ public static class DemoDataSeeder
         Allocate(pickupOrder, riceLine, lotsByCode[rice.InternalCode], 12, seller.Id, now, db);
         pickupOrder.History.Add(new OrderHistoryEntry(pickupOrder.Id, seller.Id, "order.created",
             "{\"source\":\"demo\"}", now.AddMinutes(-35)));
-        db.NotificationOutbox.Add(new NotificationOutboxEntry(pickupOrder.Id, store.Id, "ORDER_RECEIVED",
-            store.Phone, $"El pedido {pickupOrder.OrderNumber} fue recibido.", now.AddMinutes(-35)));
 
         var routeOrder = new SalesOrder("DEMO-ORDER-002", family.Id, seller.Id, "DISPATCHED",
             "DELIVERY", family.PrimaryAddress, family.Latitude, family.Longitude, 32m, now.AddMinutes(-25));
@@ -173,8 +190,6 @@ public static class DemoDataSeeder
             routeOrder.Id, dispatchOrder.Id));
         routeOrder.History.Add(new OrderHistoryEntry(routeOrder.Id, accounts["DISPATCH_LEAD"].Id,
             "order.dispatched", "{\"source\":\"demo\"}", now.AddMinutes(-10)));
-        db.NotificationOutbox.Add(new NotificationOutboxEntry(routeOrder.Id, family.Id, "OUT_FOR_DELIVERY",
-            family.Phone, $"El pedido {routeOrder.OrderNumber} salió a reparto.", now.AddMinutes(-10)));
         dispatch.Orders.Add(dispatchOrder);
         db.Dispatches.Add(dispatch);
         db.DispatchOrders.Add(dispatchOrder);

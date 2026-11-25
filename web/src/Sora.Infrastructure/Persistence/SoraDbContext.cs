@@ -17,6 +17,7 @@ public sealed class SoraDbContext(DbContextOptions<SoraDbContext> options) : DbC
     public DbSet<ProductPresentation> ProductPresentations => Set<ProductPresentation>();
     public DbSet<ProductDiscountRule> ProductDiscountRules => Set<ProductDiscountRule>();
     public DbSet<Supplier> Suppliers => Set<Supplier>();
+    public DbSet<SupplierProduct> SupplierProducts => Set<SupplierProduct>();
     public DbSet<PurchaseReceipt> PurchaseReceipts => Set<PurchaseReceipt>();
     public DbSet<InventoryLot> InventoryLots => Set<InventoryLot>();
     public DbSet<InventoryLotBalance> InventoryLotBalances => Set<InventoryLotBalance>();
@@ -27,7 +28,6 @@ public sealed class SoraDbContext(DbContextOptions<SoraDbContext> options) : DbC
     public DbSet<OrderHistoryEntry> OrderHistoryEntries => Set<OrderHistoryEntry>();
     public DbSet<OrderPayment> OrderPayments => Set<OrderPayment>();
     public DbSet<OrderCancellationResolution> OrderCancellationResolutions => Set<OrderCancellationResolution>();
-    public DbSet<NotificationOutboxEntry> NotificationOutbox => Set<NotificationOutboxEntry>();
     public DbSet<Dispatch> Dispatches => Set<Dispatch>();
     public DbSet<DispatchOrder> DispatchOrders => Set<DispatchOrder>();
 
@@ -182,6 +182,16 @@ public sealed class SoraDbContext(DbContextOptions<SoraDbContext> options) : DbC
         supplier.Property(x => x.Phone).HasColumnName("phone").HasMaxLength(40).IsRequired();
         supplier.Property(x => x.IsActive).HasColumnName("is_active");
 
+        var supplierProduct = modelBuilder.Entity<SupplierProduct>();
+        supplierProduct.ToTable("supplier_products");
+        supplierProduct.HasKey(x => new { x.SupplierId, x.ProductId });
+        supplierProduct.Property(x => x.SupplierId).HasColumnName("supplier_id");
+        supplierProduct.Property(x => x.ProductId).HasColumnName("product_id");
+        supplierProduct.HasOne(x => x.Supplier).WithMany(x => x.ProductLinks)
+            .HasForeignKey(x => x.SupplierId).OnDelete(DeleteBehavior.Restrict);
+        supplierProduct.HasOne(x => x.Product).WithMany()
+            .HasForeignKey(x => x.ProductId).OnDelete(DeleteBehavior.Restrict);
+
         var receipt = modelBuilder.Entity<PurchaseReceipt>();
         receipt.ToTable("purchase_receipts");
         receipt.HasKey(x => x.Id);
@@ -307,34 +317,6 @@ public sealed class SoraDbContext(DbContextOptions<SoraDbContext> options) : DbC
         cancellationResolution.HasOne(x => x.Order).WithMany().HasForeignKey(x => x.OrderId).OnDelete(DeleteBehavior.Restrict);
         cancellationResolution.HasOne(x => x.Actor).WithMany().HasForeignKey(x => x.ActorId).OnDelete(DeleteBehavior.Restrict);
         cancellationResolution.HasIndex(x => x.OrderId).IsUnique().HasDatabaseName("ux_order_cancellation_resolution_order");
-
-        var notification = modelBuilder.Entity<NotificationOutboxEntry>();
-        notification.ToTable("notification_outbox", t =>
-        {
-            t.HasCheckConstraint("ck_notification_outbox_state", "state IN ('PENDING','SIMULATED_SENT','FAILED')");
-            t.HasCheckConstraint("ck_notification_outbox_attempts", "attempts >= 0");
-            t.HasCheckConstraint("ck_notification_outbox_retry_count", "retry_count >= 0");
-        });
-        notification.HasKey(x => x.Id); notification.Property(x => x.Id).HasColumnName("id");
-        notification.Property(x => x.OrderId).HasColumnName("order_id"); notification.Property(x => x.CustomerId).HasColumnName("customer_id");
-        notification.Property(x => x.EventType).HasColumnName("event_type").HasMaxLength(60).IsRequired();
-        notification.Property(x => x.RecipientPhone).HasColumnName("recipient_phone").HasMaxLength(40).IsRequired();
-        notification.Property(x => x.Message).HasColumnName("message").HasMaxLength(500).IsRequired();
-        notification.Property(x => x.State).HasColumnName("state").HasMaxLength(30).IsRequired();
-        notification.Property(x => x.Mode).HasColumnName("mode").HasMaxLength(20).IsRequired();
-        notification.Property(x => x.LastError).HasColumnName("last_error").HasMaxLength(300);
-        notification.Property(x => x.Attempts).HasColumnName("attempts");
-        notification.Property(x => x.CreatedAtUtc).HasColumnName("created_at_utc");
-        notification.Property(x => x.ProcessedAtUtc).HasColumnName("processed_at_utc");
-        notification.Property(x => x.ProcessedById).HasColumnName("processed_by_id");
-        notification.HasOne(x => x.Order).WithMany().HasForeignKey(x => x.OrderId).OnDelete(DeleteBehavior.Restrict);
-        notification.HasOne(x => x.Customer).WithMany().HasForeignKey(x => x.CustomerId).OnDelete(DeleteBehavior.Restrict);
-        notification.Property(x => x.RetryCount).HasColumnName("retry_count").HasDefaultValue(0).IsRequired();
-        notification.Property(x => x.LastRetryAtUtc).HasColumnName("last_retry_at_utc");
-        notification.Property(x => x.LastRetryById).HasColumnName("last_retry_by_id");
-        notification.HasOne(x => x.ProcessedBy).WithMany().HasForeignKey(x => x.ProcessedById).OnDelete(DeleteBehavior.Restrict);
-        notification.HasOne<StaffAccount>().WithMany().HasForeignKey(x => x.LastRetryById).OnDelete(DeleteBehavior.Restrict);
-        notification.HasIndex(x => new { x.State, x.CreatedAtUtc }).HasDatabaseName("ix_notification_outbox_state_created");
 
         var orderLine = modelBuilder.Entity<OrderLine>();
         orderLine.ToTable("order_lines", t =>

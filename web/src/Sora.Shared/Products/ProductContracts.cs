@@ -4,7 +4,7 @@ namespace Sora.Shared.Products;
 
 public sealed class SaveProductRequest
 {
-    [Required, StringLength(60, MinimumLength = 1)]
+    [StringLength(60)]
     public string InternalCode { get; set; } = string.Empty;
 
     [StringLength(80)]
@@ -30,6 +30,12 @@ public sealed class SaveProductRequest
 
     [Range(typeof(decimal), "0", "9999999999")]
     public decimal UnitSalePrice { get; set; }
+}
+
+public sealed class CreateProductsRequest
+{
+    [Required, MinLength(1), MaxLength(50)]
+    public List<SaveProductRequest> Products { get; set; } = [];
 }
 
 public sealed class SaveProductPresentationRequest

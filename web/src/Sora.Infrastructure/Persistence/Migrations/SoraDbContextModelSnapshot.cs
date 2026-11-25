@@ -388,109 +388,6 @@ namespace Sora.Infrastructure.Persistence.Migrations
                         });
                 });
 
-            modelBuilder.Entity("Sora.Domain.Entities.NotificationOutboxEntry", b =>
-                {
-                    b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid")
-                        .HasColumnName("id");
-
-                    b.Property<int>("Attempts")
-                        .HasColumnType("integer")
-                        .HasColumnName("attempts");
-
-                    b.Property<DateTimeOffset>("CreatedAtUtc")
-                        .HasColumnType("timestamp with time zone")
-                        .HasColumnName("created_at_utc");
-
-                    b.Property<Guid>("CustomerId")
-                        .HasColumnType("uuid")
-                        .HasColumnName("customer_id");
-
-                    b.Property<string>("EventType")
-                        .IsRequired()
-                        .HasMaxLength(60)
-                        .HasColumnType("character varying(60)")
-                        .HasColumnName("event_type");
-
-                    b.Property<string>("LastError")
-                        .HasMaxLength(300)
-                        .HasColumnType("character varying(300)")
-                        .HasColumnName("last_error");
-
-                    b.Property<DateTimeOffset?>("LastRetryAtUtc")
-                        .HasColumnType("timestamp with time zone")
-                        .HasColumnName("last_retry_at_utc");
-
-                    b.Property<Guid?>("LastRetryById")
-                        .HasColumnType("uuid")
-                        .HasColumnName("last_retry_by_id");
-
-                    b.Property<string>("Message")
-                        .IsRequired()
-                        .HasMaxLength(500)
-                        .HasColumnType("character varying(500)")
-                        .HasColumnName("message");
-
-                    b.Property<string>("Mode")
-                        .IsRequired()
-                        .HasMaxLength(20)
-                        .HasColumnType("character varying(20)")
-                        .HasColumnName("mode");
-
-                    b.Property<Guid>("OrderId")
-                        .HasColumnType("uuid")
-                        .HasColumnName("order_id");
-
-                    b.Property<DateTimeOffset?>("ProcessedAtUtc")
-                        .HasColumnType("timestamp with time zone")
-                        .HasColumnName("processed_at_utc");
-
-                    b.Property<Guid?>("ProcessedById")
-                        .HasColumnType("uuid")
-                        .HasColumnName("processed_by_id");
-
-                    b.Property<string>("RecipientPhone")
-                        .IsRequired()
-                        .HasMaxLength(40)
-                        .HasColumnType("character varying(40)")
-                        .HasColumnName("recipient_phone");
-
-                    b.Property<int>("RetryCount")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("integer")
-                        .HasDefaultValue(0)
-                        .HasColumnName("retry_count");
-
-                    b.Property<string>("State")
-                        .IsRequired()
-                        .HasMaxLength(30)
-                        .HasColumnType("character varying(30)")
-                        .HasColumnName("state");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("CustomerId");
-
-                    b.HasIndex("LastRetryById");
-
-                    b.HasIndex("OrderId");
-
-                    b.HasIndex("ProcessedById");
-
-                    b.HasIndex("State", "CreatedAtUtc")
-                        .HasDatabaseName("ix_notification_outbox_state_created");
-
-                    b.ToTable("notification_outbox", null, t =>
-                        {
-                            t.HasCheckConstraint("ck_notification_outbox_attempts", "attempts >= 0");
-
-                            t.HasCheckConstraint("ck_notification_outbox_retry_count", "retry_count >= 0");
-
-                            t.HasCheckConstraint("ck_notification_outbox_state", "state IN ('PENDING','SIMULATED_SENT','FAILED')");
-                        });
-                });
-
             modelBuilder.Entity("Sora.Domain.Entities.OrderCancellationResolution", b =>
                 {
                     b.Property<Guid>("Id")
@@ -1260,11 +1157,6 @@ namespace Sora.Infrastructure.Persistence.Migrations
                         },
                         new
                         {
-                            Code = "notifications.manage",
-                            DisplayName = "Consultar y simular avisos al cliente"
-                        },
-                        new
-                        {
                             Code = "dispatches.read",
                             DisplayName = "Consultar despachos asignados"
                         },
@@ -1448,11 +1340,6 @@ namespace Sora.Infrastructure.Persistence.Migrations
                         {
                             RoleCode = "ADMIN",
                             PermissionCode = "payments.record"
-                        },
-                        new
-                        {
-                            RoleCode = "ADMIN",
-                            PermissionCode = "notifications.manage"
                         },
                         new
                         {
@@ -1664,6 +1551,23 @@ namespace Sora.Infrastructure.Persistence.Migrations
                     b.ToTable("suppliers", (string)null);
                 });
 
+            modelBuilder.Entity("Sora.Domain.Entities.SupplierProduct", b =>
+                {
+                    b.Property<Guid>("SupplierId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("supplier_id");
+
+                    b.Property<Guid>("ProductId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("product_id");
+
+                    b.HasKey("SupplierId", "ProductId");
+
+                    b.HasIndex("ProductId");
+
+                    b.ToTable("supplier_products", (string)null);
+                });
+
             modelBuilder.Entity("Sora.Domain.Entities.Dispatch", b =>
                 {
                     b.HasOne("Sora.Domain.Entities.StaffAccount", "DispatchLead")
@@ -1780,37 +1684,6 @@ namespace Sora.Infrastructure.Persistence.Migrations
                     b.Navigation("Lot");
 
                     b.Navigation("Order");
-                });
-
-            modelBuilder.Entity("Sora.Domain.Entities.NotificationOutboxEntry", b =>
-                {
-                    b.HasOne("Sora.Domain.Entities.Customer", "Customer")
-                        .WithMany()
-                        .HasForeignKey("CustomerId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired();
-
-                    b.HasOne("Sora.Domain.Entities.StaffAccount", null)
-                        .WithMany()
-                        .HasForeignKey("LastRetryById")
-                        .OnDelete(DeleteBehavior.Restrict);
-
-                    b.HasOne("Sora.Domain.Entities.SalesOrder", "Order")
-                        .WithMany()
-                        .HasForeignKey("OrderId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired();
-
-                    b.HasOne("Sora.Domain.Entities.StaffAccount", "ProcessedBy")
-                        .WithMany()
-                        .HasForeignKey("ProcessedById")
-                        .OnDelete(DeleteBehavior.Restrict);
-
-                    b.Navigation("Customer");
-
-                    b.Navigation("Order");
-
-                    b.Navigation("ProcessedBy");
                 });
 
             modelBuilder.Entity("Sora.Domain.Entities.OrderCancellationResolution", b =>
@@ -2031,6 +1904,25 @@ namespace Sora.Infrastructure.Persistence.Migrations
                     b.Navigation("Role");
                 });
 
+            modelBuilder.Entity("Sora.Domain.Entities.SupplierProduct", b =>
+                {
+                    b.HasOne("Sora.Domain.Entities.Product", "Product")
+                        .WithMany()
+                        .HasForeignKey("ProductId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("Sora.Domain.Entities.Supplier", "Supplier")
+                        .WithMany("ProductLinks")
+                        .HasForeignKey("SupplierId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("Product");
+
+                    b.Navigation("Supplier");
+                });
+
             modelBuilder.Entity("Sora.Domain.Entities.Dispatch", b =>
                 {
                     b.Navigation("Orders");
@@ -2094,6 +1986,11 @@ namespace Sora.Infrastructure.Persistence.Migrations
                     b.Navigation("Permissions");
 
                     b.Navigation("StaffAssignments");
+                });
+
+            modelBuilder.Entity("Sora.Domain.Entities.Supplier", b =>
+                {
+                    b.Navigation("ProductLinks");
                 });
 #pragma warning restore 612, 618
         }

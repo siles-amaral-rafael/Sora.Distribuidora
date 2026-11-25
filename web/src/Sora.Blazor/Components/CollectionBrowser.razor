@@ -1,0 +1,110 @@
+@typeparam TItem
+<div class="collection-browser">
+<div class="collection-toolbar" role="search" aria-label="Buscar y ordenar resultados">
+    <label class="collection-search">Buscar
+        <input class="form-control" type="search" value="@SearchText" @oninput="SetSearchText" placeholder="Escribe para filtrar" aria-label="Texto de búsqueda" />
+    </label>
+    <label>En columna
+        <select class="form-select" @bind="SearchColumnKey" @bind:after="ResetPage">
+            <option value="*">Todas las columnas</option>
+            @foreach (var column in Columns) { <option value="@column.Key">@column.Label</option> }
+        </select>
+    </label>
+    <label>Ordenar por
+        <select class="form-select" @bind="SortColumnKey" @bind:after="ResetPage">
+            @foreach (var column in Columns) { <option value="@column.Key">@column.Label</option> }
+        </select>
+    </label>
+    <button type="button" class="button secondary sort-direction" @onclick="ToggleSortDirection" aria-label="Cambiar dirección del ordenamiento">
+        @(SortAscending ? "Ascendente ↑" : "Descendente ↓")
+    </button>
+</div>
+<div class="collection-results">
+    @if (FilteredItems.Count == 0 && Items.Count > 0)
+    {
+        <p class="empty collection-empty">No hay resultados para esta búsqueda.</p>
+    }
+    else
+    {
+        @ChildContent(VisibleItems)
+    }
+</div>
+@if (FilteredItems.Count > 0)
+{
+    <nav class="pagination-bar" aria-label="Paginación de resultados">
+        <label class="page-size-label">Filas por página
+            <select class="form-select page-size-select" value="@PageSize" @onchange="ChangePageSize" aria-label="Filas por página">
+                @foreach (var size in PageSizeOptions) { <option value="@size">@size</option> }
+            </select>
+        </label>
+        <span class="pagination-summary" aria-live="polite">@FirstItem–@LastItem de @FilteredItems.Count resultados</span>
+        <div class="pagination-actions">
+            <button type="button" class="page-button" @onclick="Previous" disabled="@(PageIndex == 0)" aria-label="Página anterior">Anterior</button>
+            <span class="page-indicator" aria-live="polite">Página @(PageIndex + 1) de @TotalPages</span>
+            <button type="button" class="page-button" @onclick="Next" disabled="@(PageIndex + 1 >= TotalPages)" aria-label="Página siguiente">Siguiente</button>
+        </div>
+    </nav>
+}
+</div>
+
+@code {
+    [Parameter, EditorRequired] public IReadOnlyList<TItem> Items { get; set; } = Array.Empty<TItem>();
+    [Parameter, EditorRequired] public IReadOnlyList<CollectionColumn<TItem>> Columns { get; set; } = Array.Empty<CollectionColumn<TItem>>();
+    [Parameter] public RenderFragment<IReadOnlyList<TItem>> ChildContent { get; set; } = default!;
+
+    private static readonly int[] PageSizeOptions = [10, 25, 50];
+    private string SearchText = string.Empty;
+    private string SearchColumnKey = "*";
+    private string SortColumnKey = string.Empty;
+    private bool SortAscending = true;
+    private int PageSize = 10;
+    private int PageIndex;
+    private IReadOnlyList<TItem> FilteredItems
+    {
+        get
+        {
+            IEnumerable<TItem> rows = Items;
+            if (!string.IsNullOrWhiteSpace(SearchText))
+            {
+                var query = SearchText.Trim();
+                var searchColumns = SearchColumnKey == "*" ? Columns : Columns.Where(x => x.Key == SearchColumnKey);
+                rows = rows.Where(item => searchColumns.Any(column =>
+                    (column.SearchValue(item) ?? string.Empty).Contains(query, StringComparison.CurrentCultureIgnoreCase)));
+            }
+
+            var sortColumn = Columns.FirstOrDefault(x => x.Key == SortColumnKey);
+            if (sortColumn is not null)
+            {
+                var comparer = Comparer<IComparable?>.Default;
+                rows = SortAscending
+                    ? rows.OrderBy(sortColumn.SortValue, comparer)
+                    : rows.OrderByDescending(sortColumn.SortValue, comparer);
+            }
+            return rows.ToArray();
+        }
+    }
+    private int TotalPages => Math.Max(1, (int)Math.Ceiling((double)FilteredItems.Count / PageSize));
+    private int FirstItem => FilteredItems.Count == 0 ? 0 : PageIndex * PageSize + 1;
+    private int LastItem => Math.Min((PageIndex + 1) * PageSize, FilteredItems.Count);
+    private IReadOnlyList<TItem> VisibleItems => FilteredItems.Skip(PageIndex * PageSize).Take(PageSize).ToArray();
+
+    protected override void OnParametersSet()
+    {
+        if (Columns.Count > 0 && !Columns.Any(x => x.Key == SortColumnKey)) SortColumnKey = Columns[0].Key;
+        if (SearchColumnKey != "*" && !Columns.Any(x => x.Key == SearchColumnKey)) SearchColumnKey = "*";
+        PageIndex = Math.Clamp(PageIndex, 0, TotalPages - 1);
+    }
+
+    private void SetSearchText(ChangeEventArgs e) { SearchText = e.Value?.ToString() ?? string.Empty; PageIndex = 0; }
+    private void ResetPage() => PageIndex = 0;
+    private void ToggleSortDirection() { SortAscending = !SortAscending; PageIndex = 0; }
+    private void Previous() => PageIndex = Math.Max(0, PageIndex - 1);
+    private void Next() => PageIndex = Math.Min(TotalPages - 1, PageIndex + 1);
+    private void ChangePageSize(ChangeEventArgs e)
+    {
+        if (!int.TryParse(e.Value?.ToString(), out var size) || !PageSizeOptions.Contains(size)) return;
+        var firstVisible = PageIndex * PageSize;
+        PageSize = size;
+        PageIndex = firstVisible / PageSize;
+    }
+}

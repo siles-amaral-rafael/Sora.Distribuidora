@@ -13,6 +13,25 @@ namespace Sora.Api.Controllers;
 [Route("api/dispatches")]
 public sealed class DispatchesController(IDispatchService dispatches, SoraDbContext db) : ControllerBase
 {
+    [Authorize(Policy = PermissionPolicies.DispatchesCreate)]
+    [HttpGet("drivers")]
+    public async Task<IActionResult> Drivers([FromQuery] string? query, CancellationToken ct)
+    {
+        var search = query?.Trim();
+        var drivers = db.StaffAccounts.AsNoTracking().Where(x => x.IsActive &&
+            x.RoleAssignments.Any(r => r.RoleCode == "DRIVER"));
+        if (!string.IsNullOrWhiteSpace(search))
+        {
+            var name = search.ToLowerInvariant();
+            var id = Guid.TryParse(search, out var parsedId) ? parsedId : (Guid?)null;
+            drivers = drivers.Where(x => x.FullName.ToLower().Contains(name) || x.Email.ToLower().Contains(name) ||
+                (id.HasValue && x.Id == id.Value));
+        }
+        var result = await drivers.OrderBy(x => x.FullName).Take(15)
+            .Select(x => new DispatchDriverResponse(x.Id, x.FullName, x.Email)).ToListAsync(ct);
+        return Ok(result);
+    }
+
     [Authorize(Policy = PermissionPolicies.DispatchesRead)]
     [HttpGet("assigned")]
     public async Task<IActionResult> Assigned(CancellationToken ct)

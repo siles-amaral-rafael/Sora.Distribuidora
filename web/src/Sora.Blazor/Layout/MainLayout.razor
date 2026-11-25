@@ -1,16 +1,44 @@
-﻿@inherits LayoutComponentBase
-<div class="page">
+@inherits LayoutComponentBase
+@inject ApiSession Session
+@inject UiPreferencesService UiPreferences
+<div class="page workspace-shell workspace-@Session.WorkspaceProfile">
     <div class="sidebar">
         <NavMenu />
     </div>
-
     <main>
-        <div class="top-row px-4">
-            <a href="https://learn.microsoft.com/aspnet/core/" target="_blank">About</a>
-        </div>
-
+        <header class="workspace-topbar">
+            <div class="workspace-context"><span class="workspace-mark">S</span><div><strong>Sora</strong><small>Distribución y operaciones</small></div></div>
+            <div class="workspace-user">
+                <span class="role-chip">@Session.WorkspaceLabel</span>
+                <span class="user-name">@(Session.UserName ?? "Sesión no iniciada")</span>
+            </div>
+        </header>
         <article class="content px-4">
             @Body
         </article>
     </main>
 </div>
+
+@code {
+    private string? _preferencesUserKey;
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!Session.IsSignedIn)
+        {
+            if (_preferencesUserKey is not null)
+            {
+                _preferencesUserKey = null;
+                await UiPreferences.ResetViewAsync();
+            }
+            return;
+        }
+
+        var userKey = Session.PreferenceUserKey;
+        if (!string.Equals(_preferencesUserKey, userKey, StringComparison.Ordinal))
+        {
+            _preferencesUserKey = userKey;
+            await UiPreferences.LoadAsync(userKey);
+        }
+    }
+}

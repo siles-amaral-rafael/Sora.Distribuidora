@@ -23,7 +23,6 @@ public static class PermissionCatalog
         new("orders.cancel", "Cancelar pedidos"),
         new("orders.pickup", "Confirmar retiros"),
         new("payments.record", "Registrar pagos y abonos de caja"),
-        new("notifications.manage", "Consultar y simular avisos al cliente"),
         new("dispatches.read", "Consultar despachos asignados"),
         new("dispatches.create", "Crear salidas de despacho"),
         new("dispatches.result", "Registrar resultados de entrega"),

@@ -1,0 +1,22 @@
+@if (IsOpen)
+{
+    <div class="form-modal-backdrop" @onclick="Close">
+        <section class="form-modal" role="dialog" aria-modal="true" aria-labelledby="form-modal-title" tabindex="-1" @onclick:stopPropagation="true" @onkeydown="HandleKeyDown">
+            <header class="form-modal-header">
+                <h2 id="form-modal-title">@Title</h2>
+                <button type="button" class="button secondary small" aria-label="Cerrar ventana" @onclick="Close">Cerrar</button>
+            </header>
+            <div class="form-modal-body">@ChildContent</div>
+        </section>
+    </div>
+}
+
+@code {
+    [Parameter] public bool IsOpen { get; set; }
+    [Parameter] public string Title { get; set; } = "Formulario";
+    [Parameter] public EventCallback OnClose { get; set; }
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+
+    private Task Close() => OnClose.InvokeAsync();
+    private Task HandleKeyDown(KeyboardEventArgs args) => args.Key == "Escape" ? Close() : Task.CompletedTask;
+}
