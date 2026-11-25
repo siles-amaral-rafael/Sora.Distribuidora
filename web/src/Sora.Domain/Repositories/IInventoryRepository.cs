@@ -25,7 +25,7 @@ public interface IInventoryRepository
 {
     Task<bool> SupplierIsActiveAsync(Guid supplierId, CancellationToken cancellationToken);
     Task<IReadOnlySet<Guid>> GetActiveProductIdsAsync(IReadOnlyCollection<Guid> productIds, CancellationToken cancellationToken);
-    Task<bool> ReceiptExistsAsync(Guid supplierId, string invoiceNumber, CancellationToken cancellationToken);
+    Task<long> GetNextReceiptNumberAsync(CancellationToken cancellationToken);
     Task ReceiveAsync(PurchaseReceipt receipt, IReadOnlyList<InventoryLot> lots, Guid actorId, CancellationToken cancellationToken);
     Task<IReadOnlyList<InventoryStockLot>> GetStockAsync(Guid? productId, CancellationToken cancellationToken);
     Task<StockAdjustmentResult> AdjustStockAsync(Guid lotId, int quantityDelta, string movementType,

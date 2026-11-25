@@ -15,9 +15,9 @@ public sealed class InventoryRepository(SoraDbContext dbContext) : IInventoryRep
         await dbContext.Products.Where(x => productIds.Contains(x.Id) && x.IsActive)
             .Select(x => x.Id).ToHashSetAsync(cancellationToken);
 
-    public Task<bool> ReceiptExistsAsync(Guid supplierId, string invoiceNumber, CancellationToken cancellationToken) =>
-        dbContext.PurchaseReceipts.AnyAsync(x => x.SupplierId == supplierId &&
-            x.InvoiceNumber.ToUpper() == invoiceNumber.ToUpper(), cancellationToken);
+    public Task<long> GetNextReceiptNumberAsync(CancellationToken cancellationToken) =>
+        dbContext.Database.SqlQueryRaw<long>("SELECT nextval('purchase_receipt_number_seq') AS \"Value\"")
+            .SingleAsync(cancellationToken);
 
     public async Task ReceiveAsync(PurchaseReceipt receipt, IReadOnlyList<InventoryLot> lots,
         Guid actorId, CancellationToken cancellationToken)

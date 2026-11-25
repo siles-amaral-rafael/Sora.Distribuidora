@@ -8,8 +8,8 @@
 <div class="directory-page">
     <section class="panel"><div class="panel-title"><h2>Directorio</h2><button class="button secondary" @onclick="Load">Actualizar</button></div>
         <CollectionBrowser TItem="CustomerResponse" Items="CustomerRows" Columns="CustomerColumns" Context="pageRows">
-            <div class="table-scroll"><table><thead><tr><th>Cliente</th><th>Tipo</th><th>Teléfono</th><th>Dirección</th><th></th></tr></thead><tbody>
-            @foreach (var item in pageRows) { <tr><td><strong>@item.FullName</strong></td><td>@TypeName(item.CustomerType)</td><td>@item.Phone</td><td>@item.PrimaryAddress</td><td class="row-actions">@if(Session.HasPermission("customers.write")){<button class="link-button" @onclick="() => Edit(item)">Editar</button><button class="link-button danger-text" @onclick="() => Deactivate(item)">Desactivar</button>}</td></tr> }
+            <div class="table-scroll"><table><thead><tr><th>Cliente</th><th>Tipo</th><th>Teléfono</th><th>Dirección</th><th>Estado</th><th></th></tr></thead><tbody>
+            @foreach (var item in pageRows) { <tr><td><strong>@item.FullName</strong></td><td>@TypeName(item.CustomerType)</td><td>@item.Phone</td><td>@item.PrimaryAddress</td><td>@(item.IsActive ? "Activo" : "Inactivo")</td><td class="row-actions">@if(Session.HasPermission("customers.write")){<button class="link-button" @onclick="() => Edit(item)">Editar</button>@if(item.IsActive){<button class="link-button danger-text" @onclick="() => Deactivate(item)">Desactivar</button>}else{<button class="link-button" @onclick="() => Activate(item)">Reactivar</button>}}</td></tr> }
             </tbody></table></div>
         </CollectionBrowser>
         @if (CustomerRows.Count == 0) { <p class="empty">Todavía no hay clientes registrados.</p> }
@@ -37,7 +37,8 @@
         new("name", "Cliente", x => x.FullName, x => x.FullName),
         new("type", "Tipo", x => TypeName(x.CustomerType), x => TypeName(x.CustomerType)),
         new("phone", "Teléfono", x => x.Phone, x => x.Phone),
-        new("address", "Dirección", x => x.PrimaryAddress, x => x.PrimaryAddress)
+        new("address", "Dirección", x => x.PrimaryAddress, x => x.PrimaryAddress),
+        new("status", "Estado", x => x.IsActive ? "Activo" : "Inactivo", x => x.IsActive ? "Activo" : "Inactivo")
     ];
     private List<CustomerResponse> CustomerRows = [];
     private SaveCustomerRequest Form { get; set; } = NewForm();
@@ -51,6 +52,7 @@
     private void Edit(CustomerResponse c) { EditingId = c.Id; Form = new() { CustomerType=c.CustomerType, FullName=c.FullName, Phone=c.Phone, PrimaryAddress=c.PrimaryAddress, Latitude=c.Latitude, Longitude=c.Longitude }; Error = null; FormOpen = true; }
     private void ApplyCoordinates(MapCoordinates coordinates) { Form.Latitude = (decimal)coordinates.Latitude; Form.Longitude = (decimal)coordinates.Longitude; }
     private async Task Deactivate(CustomerResponse c) { var r = await Api.SendAsync<object>(HttpMethod.Delete, $"api/customers/{c.Id}"); if (r.IsSuccess) { Notice = "Cliente desactivado."; await Load(); } else Error = r.Error; }
+    private async Task Activate(CustomerResponse c) { var r = await Api.SendAsync<object>(HttpMethod.Post, $"api/customers/{c.Id}/activate"); if (r.IsSuccess) { Notice = "Cliente reactivado."; await Load(); } else Error = r.Error; }
     private void Reset() { EditingId = null; Form = NewForm(); FormOpen = false; Error = null; }
     private void CloseForm() { FormOpen = false; Error = null; }
     private static SaveCustomerRequest NewForm() => new() { CustomerType="STORE" };

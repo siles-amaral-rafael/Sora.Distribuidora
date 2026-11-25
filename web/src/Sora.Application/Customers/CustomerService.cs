@@ -72,6 +72,15 @@ public sealed class CustomerService(ICustomerRepository customers, TimeProvider 
         return true;
     }
 
+    public async Task<bool> ActivateAsync(Guid id, CancellationToken cancellationToken)
+    {
+        var customer = await customers.FindByIdAsync(id, cancellationToken);
+        if (customer is null) return false;
+        customer.Activate();
+        await customers.SaveChangesAsync(cancellationToken);
+        return true;
+    }
+
     private static bool CoordinatesAreValid(decimal? latitude, decimal? longitude) =>
         (latitude is null && longitude is null) || (latitude is not null && longitude is not null);
 

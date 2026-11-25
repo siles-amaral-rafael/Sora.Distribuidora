@@ -7,8 +7,8 @@ public sealed class CreatePurchaseReceiptRequest
     [Required]
     public Guid SupplierId { get; set; }
 
-    [Required, StringLength(100, MinimumLength = 1)]
-    public string InvoiceNumber { get; set; } = string.Empty;
+    // Optional legacy value; the server assigns the sequential receipt number.
+    public string? InvoiceNumber { get; set; }
 
     public DateTimeOffset? ReceivedAtUtc { get; set; }
 

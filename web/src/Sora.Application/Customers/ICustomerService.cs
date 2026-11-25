@@ -9,4 +9,5 @@ public interface ICustomerService
     Task<ServiceResult<CustomerResponse>> CreateAsync(SaveCustomerRequest request, CancellationToken cancellationToken);
     Task<ServiceResult<CustomerResponse>> UpdateAsync(Guid id, SaveCustomerRequest request, CancellationToken cancellationToken);
     Task<bool> DeactivateAsync(Guid id, CancellationToken cancellationToken);
+    Task<bool> ActivateAsync(Guid id, CancellationToken cancellationToken);
 }

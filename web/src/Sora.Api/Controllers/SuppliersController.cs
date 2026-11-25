@@ -48,6 +48,13 @@ public sealed class SuppliersController(ISupplierService suppliers) : Controller
             : NotFound(new { code = "supplier_not_found" });
 
     [Authorize(Policy = PermissionPolicies.SuppliersWrite)]
+    [HttpPost("{id:guid}/activate")]
+    public async Task<IActionResult> Activate(Guid id, CancellationToken cancellationToken) =>
+        await suppliers.ActivateAsync(id, cancellationToken)
+            ? NoContent()
+            : NotFound(new { code = "supplier_not_found" });
+
+    [Authorize(Policy = PermissionPolicies.SuppliersWrite)]
     [HttpPut("{id:guid}/products")]
     public async Task<IActionResult> ReplaceProducts(Guid id, ReplaceSupplierProductsRequest request,
         CancellationToken cancellationToken)

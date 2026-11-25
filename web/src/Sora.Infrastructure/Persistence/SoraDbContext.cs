@@ -33,6 +33,8 @@ public sealed class SoraDbContext(DbContextOptions<SoraDbContext> options) : DbC
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
+        modelBuilder.HasSequence<long>("purchase_receipt_number_seq").StartsAt(1).IncrementsBy(1);
+
         var account = modelBuilder.Entity<StaffAccount>();
         account.ToTable("staff_accounts");
         account.HasKey(x => x.Id);

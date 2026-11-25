@@ -12,7 +12,7 @@
         @foreach(var supplier in pageSuppliers)
         {
             <article class="supplier-card"><div class="supplier-card-head"><div><strong>@supplier.Name</strong><small>@supplier.Phone · @(supplier.IsActive?"Activo":"Inactivo")</small></div>
-                @if(Session.HasPermission("suppliers.write")){<div class="row-actions"><button class="button secondary small" @onclick="()=>Edit(supplier)">Editar</button><button class="button secondary small" @onclick="()=>BeginProductEdit(supplier)">@(EditingProductsSupplierId==supplier.Id?"Cerrar productos":"Productos")</button>@if(supplier.IsActive){<button class="button danger-outline small" @onclick="()=>Deactivate(supplier)">Desactivar</button>}</div>}
+                @if(Session.HasPermission("suppliers.write")){<div class="row-actions"><button class="button secondary small" @onclick="()=>Edit(supplier)">Editar</button>@if(supplier.IsActive){<button class="button secondary small" @onclick="()=>BeginProductEdit(supplier)">@(EditingProductsSupplierId==supplier.Id?"Cerrar productos":"Productos")</button><button class="button danger-outline small" @onclick="()=>Deactivate(supplier)">Desactivar</button>}else{<button class="button primary small" @onclick="()=>Activate(supplier)">Reactivar</button>}</div>}
             </div>
             @if(supplier.Products.Count>0){<div class="chips supplier-products">@foreach(var product in supplier.Products){<span>@product.ProductName · @product.InternalCode</span>}</div>}
             else{<small class="muted">Sin productos asociados; podrá seleccionar cualquier producto al registrar una recepción.</small>}
@@ -60,6 +60,7 @@
     private void OpenNew(){EditingId=null;Form=new();Error=null;FormOpen=true;}
     private void Edit(SupplierResponse supplier){EditingId=supplier.Id;Form=new(){Name=supplier.Name,Phone=supplier.Phone};Error=null;FormOpen=true;}
     private async Task Deactivate(SupplierResponse supplier){var r=await Api.SendAsync<object>(HttpMethod.Delete,$"api/suppliers/{supplier.Id}");if(r.IsSuccess){Notice="Proveedor desactivado.";await Load();}else Error=r.Error;}
+    private async Task Activate(SupplierResponse supplier){var r=await Api.SendAsync<object>(HttpMethod.Post,$"api/suppliers/{supplier.Id}/activate");if(r.IsSuccess){Notice="Proveedor reactivado.";await Load();}else Error=r.Error;}
     private void BeginProductEdit(SupplierResponse supplier){EditingProductsSupplierId=supplier.Id;SelectedProductIds=supplier.Products.Select(x=>x.ProductId).ToHashSet();ProductSearch="";Error=null;}
     private void ToggleProduct(Guid id,bool selected){if(selected)SelectedProductIds.Add(id);else SelectedProductIds.Remove(id);}
     private async Task SaveProducts(SupplierResponse supplier){var r=await Api.SendAsync<SupplierResponse>(HttpMethod.Put,$"api/suppliers/{supplier.Id}/products",new ReplaceSupplierProductsRequest{ProductIds=SelectedProductIds.ToList()});if(!r.IsSuccess){Error=r.Error=="supplier_or_product_not_found"?"El proveedor o uno de los productos ya no está activo.":r.Error;return;}Notice=$"Productos vinculados con {supplier.Name}.";Error=null;EditingProductsSupplierId=null;await Load();}

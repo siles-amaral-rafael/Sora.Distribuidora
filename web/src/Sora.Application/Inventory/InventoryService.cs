@@ -1,6 +1,7 @@
 using Sora.Domain.Entities;
 using Sora.Domain.Repositories;
 using Sora.Shared.Inventory;
+using System.Globalization;
 
 namespace Sora.Application.Inventory;
 
@@ -16,12 +17,6 @@ public sealed class InventoryService(IInventoryRepository inventory, TimeProvide
         if (!await inventory.SupplierIsActiveAsync(request.SupplierId, cancellationToken))
         {
             return ServiceResult<PurchaseReceiptResponse>.Failure("supplier_not_found");
-        }
-
-        var invoiceNumber = request.InvoiceNumber.Trim().ToUpperInvariant();
-        if (await inventory.ReceiptExistsAsync(request.SupplierId, invoiceNumber, cancellationToken))
-        {
-            return ServiceResult<PurchaseReceiptResponse>.Failure("invoice_already_registered");
         }
 
         var duplicateLotLine = request.Lines
@@ -46,6 +41,8 @@ public sealed class InventoryService(IInventoryRepository inventory, TimeProvide
         }
 
         var receivedAtUtc = request.ReceivedAtUtc?.ToUniversalTime() ?? timeProvider.GetUtcNow();
+        var nextReceiptNumber = await inventory.GetNextReceiptNumberAsync(cancellationToken);
+        var invoiceNumber = $"REC-{nextReceiptNumber.ToString("D6", CultureInfo.InvariantCulture)}";
         var receipt = new PurchaseReceipt(request.SupplierId, invoiceNumber, receivedAtUtc, actorId);
         var lots = request.Lines.Select(line => new InventoryLot(
             receipt.Id,

@@ -14,10 +14,10 @@
     </section>
 </div>
 <FormModal IsOpen="ReceiptFormOpen" Title="Registrar recepción de mercadería" OnClose="CloseReceipt">
-    <EditForm Model="ReceiptForm" OnValidSubmit="Receive"><DataAnnotationsValidator/><ValidationSummary/>
+    <EditForm Model="ReceiptForm" OnValidSubmit="Receive">
         <label>Proveedor</label><InputSelect class="form-select" @bind-Value="SupplierIdText" @bind-Value:after="SupplierChanged"><option value="">Selecciona proveedor</option>@foreach(var s in SupplierRows){<option value="@s.Id">@s.Name</option>}</InputSelect>
         @if(SelectedSupplier?.Products.Count > 0){<p class="muted hint">Catálogo filtrado a los productos vinculados con este proveedor.</p>}
-        <label>Factura</label><InputText class="form-control" @bind-Value="ReceiptForm.InvoiceNumber"/>
+        <div class="generated-code"><span>Factura interna</span><strong>Se asigna automáticamente</strong><small>Numeración secuencial generada al guardar la recepción.</small></div>
         @foreach(var (line,index) in ReceiptLines.Select((x,i)=>(x,i))){<div class="draft-lines"><h3>Producto y lote @(index+1)</h3>
             <label>Producto</label><InputSelect class="form-select" @bind-Value="line.ProductId"><option value="">Selecciona producto</option>@foreach(var p in ReceiptProducts){<option value="@p.Id">@p.InternalCode · @p.Name</option>}</InputSelect>
             <div class="form-grid"><div><label>Lote</label><InputText class="form-control" @bind-Value="line.LotCode"/></div><div><label>Vencimiento</label><InputDate TValue="DateOnly?" class="form-control" @bind-Value="line.ExpiryDate"/></div></div>
@@ -52,15 +52,10 @@
     private async Task LoadStock(){var r=await Api.SendAsync<List<InventoryStockLotResponse>>(HttpMethod.Get,"api/inventory/stock");if(r.IsSuccess)Stock=r.Value??[];else Error=r.Error;}
     private void OpenReceipt(){ReceiptForm=new();SupplierIdText="";ReceiptLines=[new()];Error=null;ReceiptFormOpen=true;}
     private void CloseReceipt(){ReceiptFormOpen=false;Error=null;}
-    private async Task Receive(){if(!Guid.TryParse(SupplierIdText,out var supplierId)||ReceiptLines.Count==0||ReceiptLines.Any(x=>!Guid.TryParse(x.ProductId,out _)||string.IsNullOrWhiteSpace(x.LotCode)||x.Quantity<=0||x.UnitCost<0)){Error="Completa el proveedor y todos los productos, lotes, cantidades y costos.";return;}var request=new CreatePurchaseReceiptRequest{SupplierId=supplierId,InvoiceNumber=ReceiptForm.InvoiceNumber,Lines=ReceiptLines.Select(x=>new PurchaseReceiptLineRequest{ProductId=Guid.Parse(x.ProductId),LotCode=x.LotCode,ExpiryDate=x.ExpiryDate,Quantity=x.Quantity,UnitPurchaseCost=x.UnitCost}).ToList()};var r=await Api.SendAsync<PurchaseReceiptResponse>(HttpMethod.Post,"api/inventory/receipts",request);if(!r.IsSuccess){Error=r.Error;return;}Notice=$"Recepción registrada: {r.Value?.LotCount} lotes, {r.Value?.TotalUnits} unidades.";Error=null;ReceiptForm=new();SupplierIdText="";ReceiptLines=[new()];ReceiptFormOpen=false;await LoadStock();}
+    private async Task Receive(){if(!Guid.TryParse(SupplierIdText,out var supplierId)||ReceiptLines.Count==0||ReceiptLines.Any(x=>!Guid.TryParse(x.ProductId,out _)||string.IsNullOrWhiteSpace(x.LotCode)||x.Quantity<=0||x.UnitCost<0)){Error="Completa el proveedor y todos los productos, lotes, cantidades y costos.";return;}var request=new CreatePurchaseReceiptRequest{SupplierId=supplierId,Lines=ReceiptLines.Select(x=>new PurchaseReceiptLineRequest{ProductId=Guid.Parse(x.ProductId),LotCode=x.LotCode,ExpiryDate=x.ExpiryDate,Quantity=x.Quantity,UnitPurchaseCost=x.UnitCost}).ToList()};var r=await Api.SendAsync<PurchaseReceiptResponse>(HttpMethod.Post,"api/inventory/receipts",request);if(!r.IsSuccess){Error=r.Error;return;}Notice=$"Factura interna {r.Value?.InvoiceNumber}: recepción registrada con {r.Value?.LotCount} lotes y {r.Value?.TotalUnits} unidades.";Error=null;ReceiptForm=new();SupplierIdText="";ReceiptLines=[new()];ReceiptFormOpen=false;await LoadStock();}
     private void AddReceiptLine()=>ReceiptLines.Add(new());
     private void SupplierChanged(){foreach(var line in ReceiptLines)if(Guid.TryParse(line.ProductId,out var id)&&!ReceiptProducts.Any(x=>x.Id==id))line.ProductId="";}
     private async Task Adjust(Guid id){var type=Delta<0?"LOSS":"ADJUSTMENT";var r=await Api.SendAsync<object>(HttpMethod.Post,"api/inventory/adjustments",new AdjustStockRequest{LotId=id,QuantityDelta=Delta,MovementType=type,Reason=Reason});if(!r.IsSuccess){Error=r.Error;return;}Notice="Ajuste registrado en el historial.";Error=null;AdjustLot=null;Delta=0;Reason="";await LoadStock();}
-    private sealed class ReceiptEntryForm
-    {
-        [System.ComponentModel.DataAnnotations.Required]
-        [System.ComponentModel.DataAnnotations.StringLength(100, MinimumLength = 1)]
-        public string InvoiceNumber { get; set; } = string.Empty;
-    }
+    private sealed class ReceiptEntryForm { }
     private sealed class ReceiptLineForm{public string ProductId{get;set;}="";public string LotCode{get;set;}="";public DateOnly? ExpiryDate{get;set;}public int Quantity{get;set;}=1;public decimal UnitCost{get;set;}}
 }

@@ -22,6 +22,8 @@ namespace Sora.Infrastructure.Persistence.Migrations
 
             NpgsqlModelBuilderExtensions.UseIdentityByDefaultColumns(modelBuilder);
 
+            modelBuilder.HasSequence("purchase_receipt_number_seq");
+
             modelBuilder.Entity("Sora.Domain.Entities.Customer", b =>
                 {
                     b.Property<Guid>("Id")

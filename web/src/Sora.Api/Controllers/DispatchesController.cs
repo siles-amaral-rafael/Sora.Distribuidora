@@ -27,9 +27,23 @@ public sealed class DispatchesController(IDispatchService dispatches, SoraDbCont
             drivers = drivers.Where(x => x.FullName.ToLower().Contains(name) || x.Email.ToLower().Contains(name) ||
                 (id.HasValue && x.Id == id.Value));
         }
-        var result = await drivers.OrderBy(x => x.FullName).Take(15)
+        var result = await drivers.OrderBy(x => x.FullName).Take(string.IsNullOrWhiteSpace(search) ? 100 : 15)
             .Select(x => new DispatchDriverResponse(x.Id, x.FullName, x.Email)).ToListAsync(ct);
         return Ok(result);
+    }
+
+    [Authorize(Policy = PermissionPolicies.DispatchesCreate)]
+    [HttpGet("vehicles")]
+    public async Task<IActionResult> Vehicles(CancellationToken ct)
+    {
+        var vehicles = await db.Dispatches.AsNoTracking()
+            .Select(x => x.VehicleIdentifier)
+            .Where(x => x != "")
+            .Distinct()
+            .OrderBy(x => x)
+            .Take(100)
+            .ToListAsync(ct);
+        return Ok(vehicles);
     }
 
     [Authorize(Policy = PermissionPolicies.DispatchesRead)]

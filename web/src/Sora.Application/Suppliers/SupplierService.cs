@@ -11,6 +11,7 @@ public interface ISupplierService
     Task<SupplierResponse> CreateAsync(SaveSupplierRequest request, CancellationToken cancellationToken);
     Task<SupplierResponse?> UpdateAsync(Guid id, SaveSupplierRequest request, CancellationToken cancellationToken);
     Task<bool> DeactivateAsync(Guid id, CancellationToken cancellationToken);
+    Task<bool> ActivateAsync(Guid id, CancellationToken cancellationToken);
     Task<ServiceResult<SupplierResponse>> ReplaceProductsAsync(Guid id, ReplaceSupplierProductsRequest request,
         CancellationToken cancellationToken);
 }
@@ -47,6 +48,15 @@ public sealed class SupplierService(ISupplierRepository suppliers) : ISupplierSe
         var supplier = await suppliers.FindByIdAsync(id, cancellationToken);
         if (supplier is null) return false;
         supplier.Deactivate();
+        await suppliers.SaveChangesAsync(cancellationToken);
+        return true;
+    }
+
+    public async Task<bool> ActivateAsync(Guid id, CancellationToken cancellationToken)
+    {
+        var supplier = await suppliers.FindByIdAsync(id, cancellationToken);
+        if (supplier is null) return false;
+        supplier.Activate();
         await suppliers.SaveChangesAsync(cancellationToken);
         return true;
     }

@@ -66,4 +66,13 @@ public sealed class CustomersController(ICustomerService customers) : Controller
         await customers.DeactivateAsync(id, cancellationToken)
             ? NoContent()
             : NotFound(new { code = "customer_not_found" });
+
+    [Authorize(Policy = PermissionPolicies.CustomersWrite)]
+    [HttpPost("{id:guid}/activate")]
+    [ProducesResponseType(StatusCodes.Status204NoContent)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<IActionResult> Activate(Guid id, CancellationToken cancellationToken) =>
+        await customers.ActivateAsync(id, cancellationToken)
+            ? NoContent()
+            : NotFound(new { code = "customer_not_found" });
 }
