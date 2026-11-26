@@ -99,7 +99,8 @@ def db_identity():
     assert_true(scalar('select count(*) from "__EFMigrationsHistory"') > 0, "base sin migraciones")
     status, payload = api("GET", "/api/health", expected=[200])
     assert_true(payload.get("status") == "ok", "API de prueba no saludable")
-    return f"base=sora_it; user=sora_it; migraciones={scalar('select count(*) from \"__EFMigrationsHistory\"')}; health=200"
+    migration_count = scalar('select count(*) from "__EFMigrationsHistory"')
+    return f"base=sora_it; user=sora_it; migraciones={migration_count}; health=200"
 
 
 def auth_checks():
