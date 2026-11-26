@@ -14,8 +14,11 @@ export SORA_IT_CONNECTION_STRING="Host=127.0.0.1;Port=55433;Database=sora_it;Use
 export SORA_IT_JWT_SIGNING_KEY
 # Program.cs validates its connection string while the test host is starting,
 # before WebApplicationFactory applies its in-memory test configuration. Keep
-# this process-level value pinned to the isolated integration database.
+# the process-level configuration pinned to the isolated database and test JWT.
 export ConnectionStrings__Postgres="$SORA_IT_CONNECTION_STRING"
+export Jwt__Issuer=Sora.Api.IntegrationTests
+export Jwt__Audience=Sora.Api.IntegrationTests
+export Jwt__SigningKey="$SORA_IT_JWT_SIGNING_KEY"
 
 RUN_ID="$(date -u +%Y%m%dT%H%M%SZ)"
 RUN_DIR="$WEB_DIR/test-results/quality-$RUN_ID"
@@ -33,6 +36,9 @@ else
     -e "SORA_IT_CONNECTION_STRING=$SORA_IT_CONNECTION_STRING" \
     -e "SORA_IT_JWT_SIGNING_KEY=$SORA_IT_JWT_SIGNING_KEY" \
     -e "ConnectionStrings__Postgres=$SORA_IT_CONNECTION_STRING" \
+    -e "Jwt__Issuer=Sora.Api.IntegrationTests" \
+    -e "Jwt__Audience=Sora.Api.IntegrationTests" \
+    -e "Jwt__SigningKey=$SORA_IT_JWT_SIGNING_KEY" \
     -v "$WEB_DIR:/src:Z" -w /src mcr.microsoft.com/dotnet/sdk:10.0 \
     dotnet test Sora.sln -m:1 --results-directory "/src/test-results/quality-$RUN_ID/dotnet" \
     --logger "trx" --collect:"XPlat Code Coverage" || test_status=$?
