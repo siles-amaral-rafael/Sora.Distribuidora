@@ -3,6 +3,7 @@ using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
 using Sora.Domain.Entities;
 using Sora.Domain.Repositories;
+using Sora.Application.Orders;
 
 namespace Sora.Infrastructure.Persistence;
 
@@ -412,7 +413,7 @@ public sealed class OrderRepository(SoraDbContext db) : IOrderRepository
         var lotRows = await db.InventoryLots.AsNoTracking().Where(x => ids.Contains(x.ProductId) &&
                 (x.ExpiryDate == null || x.ExpiryDate >= currentDate))
             .OrderBy(x => x.ProductId).ThenBy(x => x.ExpiryDate).ThenBy(x => x.Id)
-            .Select(x => new LotRow(x.Id, x.ProductId, x.UnitPurchaseCost, true))
+            .Select(x => new LotRow(x.Id, x.ProductId, x.UnitPurchaseCost, x.ExpiryDate, true))
             .ToListAsync(cancellationToken);
         return await LockLotRowsAsync(lotRows, lotRows, ids, cancellationToken);
     }
@@ -431,7 +432,7 @@ public sealed class OrderRepository(SoraDbContext db) : IOrderRepository
         var byProduct = productIds.ToDictionary(x => x, _ => new List<LockedLot>());
         foreach (var lot in candidateRows)
             if (balances.TryGetValue(lot.Id, out var balance))
-                byProduct[lot.ProductId].Add(new LockedLot(lot.Id, lot.ProductId, lot.UnitPurchaseCost, balance));
+                byProduct[lot.ProductId].Add(new LockedLot(lot.Id, lot.ProductId, lot.UnitPurchaseCost, lot.ExpiryDate, balance));
         return new LockedLotSet(byProduct, balances);
     }
 
@@ -444,7 +445,7 @@ public sealed class OrderRepository(SoraDbContext db) : IOrderRepository
         var lotRows = await db.InventoryLots.AsNoTracking().Where(x =>
                 (ids.Contains(x.ProductId) && (x.ExpiryDate == null || x.ExpiryDate >= currentDate)) || allocationIds.Contains(x.Id))
             .OrderBy(x => x.ProductId).ThenBy(x => x.ExpiryDate).ThenBy(x => x.Id)
-            .Select(x => new LotRow(x.Id, x.ProductId, x.UnitPurchaseCost,
+            .Select(x => new LotRow(x.Id, x.ProductId, x.UnitPurchaseCost, x.ExpiryDate,
                 ids.Contains(x.ProductId) && (x.ExpiryDate == null || x.ExpiryDate >= currentDate)))
             .ToListAsync(cancellationToken);
         return await LockLotRowsAsync(lotRows.Where(x => x.IsEligible).ToArray(), lotRows, ids, cancellationToken);
@@ -482,17 +483,12 @@ public sealed class OrderRepository(SoraDbContext db) : IOrderRepository
     {
         foreach (var group in lines.GroupBy(x => x.Product.Id))
         {
-            var remaining = group.Sum(x => x.Units);
-            var cost = 0m;
-            foreach (var lot in lots.GetValueOrDefault(group.Key) ?? [])
-            {
-                var take = Math.Min(remaining, lot.Balance.AvailableUnits);
-                if (take <= 0) continue;
-                cost += take * lot.UnitPurchaseCost;
-                remaining -= take;
-                if (remaining == 0) break;
-            }
-            if (remaining > 0) continue;
+            var sourceLots = lots.GetValueOrDefault(group.Key) ?? [];
+            var plan = OrderPricingPolicy.PlanFefo(group.Sum(x => x.Units), sourceLots.Select(x =>
+                new AvailableLot(x.LotId, x.ExpiryDate, x.Balance.AvailableUnits, x.UnitPurchaseCost)));
+            if (plan.MissingUnits > 0) continue;
+            var byId = sourceLots.ToDictionary(x => x.LotId);
+            var cost = plan.Allocations.Sum(x => x.Units * byId[x.LotId].UnitPurchaseCost);
             var subtotal = group.Sum(x => x.Subtotal);
             if (cost > subtotal) return true;
         }
@@ -513,21 +509,22 @@ public sealed class OrderRepository(SoraDbContext db) : IOrderRepository
     private void ReserveLine(OrderLine line, PlannedLine item, Dictionary<Guid, List<LockedLot>> lots,
         SalesOrder order, Guid actorId, DateTimeOffset now)
     {
-        var remaining = item.Units;
-        foreach (var lot in lots.GetValueOrDefault(item.Product.Id) ?? [])
+        var sourceLots = lots.GetValueOrDefault(item.Product.Id) ?? [];
+        var byId = sourceLots.ToDictionary(x => x.LotId);
+        var plan = OrderPricingPolicy.PlanFefo(item.Units, sourceLots.Select(x =>
+            new AvailableLot(x.LotId, x.ExpiryDate, x.Balance.AvailableUnits, x.UnitPurchaseCost)));
+        foreach (var planned in plan.Allocations)
         {
-            if (remaining == 0) break;
-            var quantity = Math.Min(remaining, lot.Balance.AvailableUnits);
-            if (quantity <= 0) continue;
+            var lot = byId[planned.LotId];
+            var quantity = planned.Units;
             if (!lot.Balance.TryChangeReserved(quantity)) throw new InvalidOperationException("El saldo del lote cambió durante la reserva.");
             var allocation = new OrderLotAllocation(line.Id, lot.LotId, quantity, lot.UnitPurchaseCost);
             line.LotAllocations.Add(allocation);
             db.OrderLotAllocations.Add(allocation);
             db.InventoryMovements.Add(new InventoryMovement(lot.LotId, "RESERVE", 0, quantity,
                 actorId, now, $"Reserva FEFO para {order.OrderNumber}", order.Id));
-            remaining -= quantity;
         }
-        if (remaining != 0) throw new InvalidOperationException("La reserva validada no pudo completarse.");
+        if (plan.MissingUnits != 0) throw new InvalidOperationException("La reserva validada no pudo completarse.");
     }
 
     private static void ApplyDiscount(OrderLine line, Product product, int totalProductUnits)
@@ -536,10 +533,7 @@ public sealed class OrderRepository(SoraDbContext db) : IOrderRepository
             .OrderByDescending(x => x.MinimumQuantityUnits).FirstOrDefault();
         if (rule is null) return;
         var cost = line.LotAllocations.Sum(x => x.UnitCostSnapshot * x.QuantityReserved);
-        var grossMargin = Math.Max(0, line.SubtotalAmount - cost);
-        var cap = decimal.Floor(grossMargin * 0.20m * 100m) / 100m;
-        var requested = decimal.Round(line.SubtotalAmount * rule.DiscountPercent / 100m, 2, MidpointRounding.AwayFromZero);
-        line.ApplyDiscount(Math.Min(cap, requested));
+        line.ApplyDiscount(OrderPricingPolicy.CalculateDiscount(line.SubtotalAmount, cost, rule.DiscountPercent));
     }
 
     private void AddHistory(SalesOrder order, Guid actorId, string eventType, object details, DateTimeOffset now) =>
@@ -552,10 +546,10 @@ public sealed class OrderRepository(SoraDbContext db) : IOrderRepository
         x.UnitSalePriceSnapshot, x.SubtotalAmount, x.DiscountAmount, x.LineTotal
     }).ToArray();
 
-    private sealed record LotRow(Guid Id, Guid ProductId, decimal UnitPurchaseCost, bool IsEligible);
+    private sealed record LotRow(Guid Id, Guid ProductId, decimal UnitPurchaseCost, DateOnly? ExpiryDate, bool IsEligible);
     private sealed record LockedLotSet(Dictionary<Guid, List<LockedLot>> ByProduct,
         Dictionary<Guid, InventoryLotBalance> BalancesByLot);
     private sealed record PlannedLine(Product Product, Guid? PresentationId, decimal EnteredQuantity,
         int Units, decimal Subtotal);
-    private sealed record LockedLot(Guid LotId, Guid ProductId, decimal UnitPurchaseCost, InventoryLotBalance Balance);
+    private sealed record LockedLot(Guid LotId, Guid ProductId, decimal UnitPurchaseCost, DateOnly? ExpiryDate, InventoryLotBalance Balance);
 }

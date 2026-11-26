@@ -5,7 +5,9 @@
 
 # dotenv files
 .env
+.env.integration
 /backups/
+/test-results/
 
 # User-specific files
 *.rsuser

@@ -126,3 +126,5 @@ if (builder.Configuration.GetValue<bool>("Database:MigrateOnStartup"))
 }
 
 app.Run();
+
+public partial class Program { }

@@ -1,0 +1,9 @@
+# Keep local credentials and generated artifacts out of Podman build contexts.
+.env
+.env.*
+!.env.example
+!.env.integration.example
+.git
+**/bin
+**/obj
+**/TestResults

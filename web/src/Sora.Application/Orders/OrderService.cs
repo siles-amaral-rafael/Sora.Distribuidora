@@ -150,8 +150,9 @@ public sealed class OrderService(IOrderRepository repository, TimeProvider clock
             line.Presentation?.Name, line.EnteredQuantity, line.QuantityUnits,
             line.UnitSalePriceSnapshot, line.LineTotal, line.SubtotalAmount, line.DiscountAmount,
             line.UnitsAvailableAtCreation, line.ShortageUnits,
-            line.LotAllocations.Select(a => new OrderLotAllocationResponse(a.Lot.LotCode,
-                a.Lot.ExpiryDate, a.QuantityReserved)).ToList())).ToList(),
+            line.LotAllocations.OrderBy(a => a.Lot.ExpiryDate ?? DateOnly.MaxValue).ThenBy(a => a.Lot.LotCode)
+                .Select(a => new OrderLotAllocationResponse(a.Lot.LotCode,
+                    a.Lot.ExpiryDate, a.QuantityReserved)).ToList())).ToList(),
         order.History.OrderBy(x => x.OccurredAtUtc).Select(x => new OrderHistoryResponse(
             x.EventType, x.OccurredAtUtc, x.Actor.FullName, x.Details)).ToList(),
         order.Payments.Sum(x => x.Amount), Math.Max(0, order.TotalAmount - order.Payments.Sum(x => x.Amount)),

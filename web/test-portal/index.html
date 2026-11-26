@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light">
+  <title>Calidad de software · Sora</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <header class="topbar">
+    <div><span class="eyebrow">SORA DISTRIBUIDORA</span><h1>Pruebas y calidad</h1></div>
+    <div class="header-meta"><span class="badge">Portal independiente</span><span id="run-date">Sin ejecución registrada</span></div>
+  </header>
+  <main>
+    <section class="intro">
+      <p>Consulta el procedimiento, resultado, duración y evidencia de cada verificación. Esta página se ejecuta por separado y no forma parte de la aplicación Sora.</p>
+      <div class="toolbar"><label>Filtrar casos <input id="search" type="search" placeholder="ID, módulo o resultado"></label><label>Tipo <select id="suite-filter"><option value="all">Todos</option><option value="unit">Unitarias</option><option value="integration">Integración</option><option value="api">API</option></select></label><button id="refresh" type="button">Actualizar resultados</button></div>
+    </section>
+    <section class="metrics" aria-label="Resumen de ejecución">
+      <article><span>Pruebas ejecutadas</span><strong id="total">—</strong></article>
+      <article class="good"><span>Aprobados</span><strong id="passed">—</strong></article>
+      <article class="bad"><span>Fallidos</span><strong id="failed">—</strong></article>
+      <article><span>Pendientes / sin evidencia</span><strong id="pending">—</strong></article>
+      <article><span>Fuera de alcance</span><strong id="excluded">—</strong></article>
+      <article><span>Duración total</span><strong id="duration">—</strong></article>
+    </section>
+    <section class="coverage">
+      <div><span class="eyebrow">COBERTURA</span><h2 id="coverage-title">Cobertura no disponible</h2><p id="coverage-note">Se mostrará cuando exista un reporte Coverlet de la ejecución.</p></div>
+      <div class="coverage-meter"><div id="coverage-bar"></div></div>
+    </section>
+    <section class="panel">
+      <div class="panel-head"><div><span class="eyebrow">MATRIZ DE PRUEBAS</span><h2>Procedimientos y resultados</h2></div><span id="result-source" class="muted">Cargando…</span></div>
+      <div class="table-wrap"><table><thead><tr><th>ID / prioridad</th><th>Módulo y caso</th><th>Procedimiento reproducible</th><th>Esperado</th><th>Resultado / duración</th><th>Evidencia o error</th></tr></thead><tbody id="cases"></tbody></table></div>
+      <p id="empty" class="empty" hidden>No hay resultados para este filtro. Ejecuta la suite desde el repositorio o cambia el filtro.</p>
+    </section>
+    <p class="footnote">Las pruebas automatizadas usan el entorno aislado <code>sora-it</code>. Nunca conectes esta suite a la base activa del negocio.</p>
+  </main>
+  <script src="app.js" defer></script>
+</body>
+</html>

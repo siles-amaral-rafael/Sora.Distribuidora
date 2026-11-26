@@ -123,6 +123,36 @@ Las migraciones `Revision5OperationalModules` y `Revision5RejectionInspection` c
 
 La interfaz queda disponible localmente en `http://localhost:5173` y la API en `http://localhost:5151`.
 
+## Entorno aislado para pruebas de integración
+
+No ejecutes la matriz de integración contra la base de demostración `sora`. Usa el entorno Podman aislado de pruebas: crea una base `sora_it`, una red `sora-it_default`, el volumen `sora_it_postgres_data` y puertos locales distintos. El script genera `.env.integration` con credenciales aleatorias (permisos `600`, excluido de Git), aplica las migraciones y carga datos ficticios con la semilla de desarrollo. El script administra contenedores directamente con Podman y no usa `podman-compose`; antes de construir registra la imagen de API de la demo y verifica que su etiqueta siga apuntando al mismo contenido. Si cambiara, restaura la etiqueta anterior y detiene el inicio de pruebas.
+
+El archivo `.containerignore` también excluye archivos `.env*`, credenciales Git y artefactos `bin/obj` del contexto que Podman envía al construir la imagen.
+
+Desde `web/`:
+
+```bash
+./scripts/integration-env.sh up
+./scripts/integration-env.sh status
+```
+
+La API aislada está en `http://127.0.0.1:5251`, PostgreSQL en `127.0.0.1:55433`. El script verifica el nombre de la base y el usuario en el contenedor antes de declarar el entorno disponible. Cuentas ficticias disponibles solo allí: `admin@sora.demo` y la contraseña temporal `SoraDemo2026!`.
+
+Para detener los contenedores conservando la base de prueba:
+
+```bash
+./scripts/integration-env.sh down
+```
+
+Para eliminar y recrear únicamente la base aislada (sus datos ficticios se volverán a cargar al levantarla):
+
+```bash
+./scripts/integration-env.sh reset
+./scripts/integration-env.sh up
+```
+
+El script no usa `web/.env`, ni los puertos 5151/5433, ni el volumen `web_sora-postgres-data`. `down` conserva la red y los datos; `reset` elimina solamente el volumen de integración después de comprobar su etiqueta de propiedad. No ejecutes comandos de limpieza con `-v` para este entorno.
+
 ## Preparar una demostración en otra computadora (Debian/Ubuntu)
 
 El host solo necesita Git, Podman, `podman-compose`, Python 3 y OpenSSL; .NET 10, PostgreSQL y Nginx se ejecutan o compilan dentro de contenedores. Debian no es un impedimento: Podman está disponible en los repositorios de Debian 11 en adelante. Las imágenes .NET 10 oficiales usan Ubuntu como sistema base dentro del contenedor, de modo que no dependen de que el host sea Debian o Ubuntu. Consulta la [guía oficial de instalación de Podman](https://podman.io/docs/installation) y la [nota de Microsoft sobre las imágenes de .NET 10](https://learn.microsoft.com/dotnet/core/compatibility/containers/10.0/default-images-use-ubuntu).
@@ -175,3 +205,44 @@ La semilla carga aproximadamente 120 registros relacionados en cuentas y roles, 
 Para obtener cambios desde GitHub, ejecuta `git pull` y luego `podman-compose up --build -d`. El volumen `sora-postgres-data` conserva la base durante actualizaciones normales. Para detener los servicios usa `podman-compose down`; no añadas `-v` salvo que quieras borrar definitivamente la base de demostración. Las copias automáticas se guardan localmente en `../backups/` y no se suben a Git.
 
 El acceso por IP es para la misma red local. Un nombre DNS no es necesario para la demo; se puede reservar una IP local estable en el router. El acceso desde fuera de esa red requiere una publicación separada con HTTPS y controles de seguridad adicionales.
+
+## Suite automatizada y portal independiente
+
+Los proyectos `tests/Sora.UnitTests`, `tests/Sora.IntegrationTests` y `tests/Sora.ApiTests` forman parte de `Sora.sln`. Las pruebas de unidad no requieren base de datos. Las de integración/API necesitan la base aislada PostgreSQL `sora_it` y la configuración generada en `.env.integration`; las pruebas validan explícitamente que el usuario/base sean `sora_it` y no conectan con la base de demostración.
+
+Para preparar/compilar y ejecutar solo la suite unitaria:
+
+```bash
+dotnet restore Sora.sln
+dotnet build Sora.sln --no-restore
+./scripts/run-unit-tests.sh
+```
+
+Ejecución completa en Linux con Podman:
+
+```bash
+./scripts/run-quality-suite.sh
+```
+
+El comando levanta solo el entorno de integración, ejecuta xUnit con Coverlet, ejecuta las verificaciones HTTP y de persistencia que siguen en Python, y publica un reporte sanitizado. También se puede ejecutar individualmente `dotnet test tests/Sora.UnitTests/Sora.UnitTests.csproj`, `dotnet test tests/Sora.IntegrationTests/Sora.IntegrationTests.csproj` o `dotnet test tests/Sora.ApiTests/Sora.ApiTests.csproj` después de preparar el ambiente y exportar `SORA_IT_CONNECTION_STRING` y `SORA_IT_JWT_SIGNING_KEY` desde `.env.integration`.
+
+Para ejecutar los proyectos separados tras `./scripts/integration-env.sh up`, exporta la configuración local que genera el script y usa estas rutas:
+
+```bash
+set -a
+. .env.integration
+set +a
+export SORA_IT_CONNECTION_STRING="Host=127.0.0.1;Port=55433;Database=sora_it;Username=sora_it;Password=$SORA_IT_POSTGRES_PASSWORD;SSL Mode=Disable"
+export SORA_IT_JWT_SIGNING_KEY
+dotnet test tests/Sora.IntegrationTests/Sora.IntegrationTests.csproj
+dotnet test tests/Sora.ApiTests/Sora.ApiTests.csproj
+dotnet test Sora.sln --collect:"XPlat Code Coverage"
+```
+
+El portal está en `test-portal/`, fuera de Blazor y sin dependencia de la API Sora:
+
+```bash
+python3 -m http.server 8765 --directory test-portal
+```
+
+Visita `http://localhost:8765`. El proceso de pruebas genera `test-portal/data/latest.json`; `test-portal/data/cases.json` describe el procedimiento y resultado esperado. Los casos no cubiertos se muestran como pendientes y las notificaciones simuladas se muestran fuera del alcance. El porcentaje de cobertura aparece solo si el recolector Coverlet emite el reporte.
